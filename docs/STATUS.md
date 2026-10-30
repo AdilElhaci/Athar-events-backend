@@ -18,7 +18,7 @@
 | Item | Blocks | Reference |
 | --- | --- | --- |
 | Client answers to the business questions (replacement rule, approval gate, guest identity, list channel, Excel template) | P3 rules freeze | [OQ-01 to OQ-05](product/open-questions.md) |
-| Hosting location approval (server chosen per [D-30](product/decisions.md): OVH, Canada); cost and operator | Loading real guest data | [OQ-06](product/open-questions.md), [ADR-0002](adr/0002-hosting-and-data-location.md) |
+| Hosting budget and post-support operator (location approved: [D-31](product/decisions.md)) | Handover | [OQ-06](product/open-questions.md), [ADR-0002](adr/0002-hosting-and-data-location.md) |
 | Meta Business verification, WhatsApp number, template submission | P1 tracer, P3 campaign | [OQ-14](product/open-questions.md), [integrations](architecture/integrations.md#whatsapp-cloud-api) |
 | Moyasar merchant account | P2 payment | [integrations](architecture/integrations.md#moyasar) |
 | Quotation validity (expires about 2026-11-01) | Commercial start | [OQ-12](product/open-questions.md) |

@@ -1,6 +1,6 @@
 # ADR-0002: Hosting and data location
 
-Status: Proposed
+Status: Accepted — server per [D-30](../product/decisions.md), location (Canada) approved by the client per [D-31](../product/decisions.md)
 Date: 2026-10-24
 Traceability: FR-09, NFR-04, NFR-09; [D-19](../product/decisions.md); [OQ-06](../product/open-questions.md), [OQ-10](../product/open-questions.md)
 

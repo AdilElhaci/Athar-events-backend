@@ -18,7 +18,7 @@ File name: `NNNN-short-slug.md`. Sections: Status, Date, Traceability, Context, 
 | ADR | Decision | Traceability | Status |
 | --- | --- | --- | --- |
 | [0001](0001-stack-and-repository-boundaries.md) | Stack and repository boundaries: NestJS modular monolith + one Next.js app, following the Athar reference | All FRs; D-03, D-04, D-05 | Proposed (2026-10-24) |
-| [0002](0002-hosting-and-data-location.md) | Dedicated VPS + Compose + nginx blue/green by default; managed PostgreSQL alternative; location chosen by the client | FR-09, NFR-04, NFR-09; D-19; OQ-06 | Proposed (2026-10-24) |
+| [0002](0002-hosting-and-data-location.md) | Dedicated VPS + Compose + nginx blue/green by default; managed PostgreSQL alternative; location chosen by the client | FR-09, NFR-04, NFR-09; D-19; OQ-06; D-30, D-31 | Accepted (2026-10-31) |
 | [0003](0003-whatsapp-route-and-templates.md) | Meta Cloud API direct, client-owned WABA, durable send engine, two templates | FR-06, FR-07; D-09, D-11; OQ-14 | Proposed (2026-10-24) |
 | [0004](0004-payment-gateway.md) | Moyasar hosted invoice with server-side verification and reconciliation | FR-05; D-10; OQ-07 | Proposed (2026-10-24) |
 | [0005](0005-scanner-access-model.md) | Scanning requires the authenticated event owner | FR-07; D-08; OQ-15 | Proposed (2026-10-24) — records an owner decision |

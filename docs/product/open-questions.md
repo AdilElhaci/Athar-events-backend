@@ -11,7 +11,7 @@ Owner = who must answer: **Client** (the business that commissioned the platform
 | OQ-03 | Client | Does one invitation mean one person, one phone number, or a family? Companions / plus-ones? | One named guest, one phone, one admission; no companions | Capacity, QR ownership, counts | P3 guest model |
 | OQ-04 | Client | How does the owner send the guest list to the admin (the owner does not upload)? | Owner downloads the Excel template from the dashboard and sends it by WhatsApp or email to the operations contact, quoting the event number | Lists lost or mismatched | P3 owner instructions |
 | OQ-05 | Client | Which Excel format? Arbitrary columns or one template? | One `.xlsx` template: `name`, `phone`, `type` (`initial`/`reserve`), optional `note` | A column-mapping tool is extra scope | P3 import |
-| OQ-06 | Client | Hosting location (Saudi Arabia or outside), recurring budget, and who operates the server after support ends | Dedicated VPS + Compose (D-19); location chosen by the client after the PDPL transfer review | Cannot create staging/production | P1 deploy |
+| OQ-06 | Client | Recurring hosting budget, and who operates the server after support ends (location resolved: [D-31](decisions.md)) | Dedicated VPS + Compose (D-19) on the D-30 server | Handover after support | P5 launch |
 | OQ-07 | Client | Does the 30% demo milestone accept a sandbox (test-mode) payment? | Yes, sandbox on staging; production merchant activation is external | Milestone dispute | P2 demo |
 | OQ-08 | Client | Is the 12,000 SAR price before VAT? Is the client VAT-registered? | Price excludes VAT; 15% added if applicable (quotation wording) | Invoice dispute | Signing |
 | OQ-09 | Client | What does "live" mean for the dashboard? | Updates within 10 s while the page is open (NFR-05) | Subjective acceptance | P4 |
@@ -38,6 +38,7 @@ Owner = who must answer: **Client** (the business that commissioned the platform
 | ID | Question | Answer | Decision | Date |
 | --- | --- | --- | --- | --- |
 | — | Door-scanner identity (review point P1) | Scanning requires the authenticated event owner | [D-08](decisions.md) | 2026-10-24 |
+| OQ-06 (location) | Hosting location | Canada (OVH, the D-30 server) | [D-31](decisions.md) | 2026-10-31 |
 | OQ-13 | Branding | The client's own brand kit, approved as-is | [D-29](decisions.md) | 2026-10-27 |
 | OQ-25 | Admin bootstrap | Server CLI with an emailed invite link; no env allowlist, no public route | [D-28](decisions.md) | 2026-10-24 |
 

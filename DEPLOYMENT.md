@@ -117,6 +117,17 @@ sudo systemctl enable --now docker nginx fail2ban
 
 Log out and back in (docker group), then check `docker compose version` and `sudo ufw status verbose`.
 
+Once your SSH key works, allow keys only. Keep the current session open while testing; recovery is the OVH KVM console (local password login), then remove the file and reload `ssh`:
+
+```bash
+printf '%s\n' 'PasswordAuthentication no' 'KbdInteractiveAuthentication no' 'PermitRootLogin no' \
+  | sudo tee /etc/ssh/sshd_config.d/00-athar-events-hardening.conf >/dev/null
+sudo sshd -t && sudo systemctl reload ssh
+sudo sshd -T | grep -i '^passwordauthentication'   # expect: no
+```
+
+From another terminal, `ssh ubuntu@<server> true` must still work.
+
 If the server has less than 4 GB of RAM, add swap before the first build (Next.js builds need memory):
 
 ```bash
