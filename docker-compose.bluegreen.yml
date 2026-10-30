@@ -1,0 +1,65 @@
+# One blue/green slot: the API and the web app. Used only by scripts/deploy-production.sh,
+# with --project-name athar-events-<slot>. Ports are bound to 127.0.0.1; nginx is the only
+# public entry point. Data services live in docker-compose.prod.yml.
+
+services:
+  api:
+    build:
+      context: .
+      target: production
+    image: athar-events-api:${DEPLOY_SLOT:?DEPLOY_SLOT is required}
+    container_name: athar-events-api-${DEPLOY_SLOT:?DEPLOY_SLOT is required}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+    ports:
+      - '127.0.0.1:${API_BIND_PORT:?API_BIND_PORT is required}:4000'
+    networks:
+      - default
+      - athar-events-network
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      sa.atharevents.deployment.slot: ${DEPLOY_SLOT}
+    mem_limit: 768m
+    cpus: 1.0
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        # The web container reaches the API of its own slot over the slot network.
+        BACKEND_URL: http://api:4000
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_URL:?PUBLIC_URL must be set in .env}
+        NEXT_PUBLIC_CONTACT_WHATSAPP: ${NEXT_PUBLIC_CONTACT_WHATSAPP:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+        NEXT_PUBLIC_CONTACT_HOURS: ${NEXT_PUBLIC_CONTACT_HOURS:-}
+        NEXT_PUBLIC_SIGN_IN_ENABLED: ${NEXT_PUBLIC_SIGN_IN_ENABLED:-false}
+    image: athar-events-web:${DEPLOY_SLOT}
+    container_name: athar-events-web-${DEPLOY_SLOT}
+    restart: unless-stopped
+    environment:
+      # Server-side packages fetch (lib/packages.ts). Empty until GET /packages exists.
+      API_URL: ${WEB_API_URL:-}
+      PACKAGES_FIXTURES: 'false'
+    ports:
+      - '127.0.0.1:${WEB_BIND_PORT:?WEB_BIND_PORT is required}:3000'
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      api:
+        condition: service_healthy
+    labels:
+      sa.atharevents.deployment.slot: ${DEPLOY_SLOT}
+    mem_limit: 512m
+    cpus: 1.0
+
+networks:
+  athar-events-network:
+    external: true
+    name: athar-events-network

@@ -1,0 +1,58 @@
+# Production data services (PostgreSQL, Redis). Long-lived: never part of blue/green.
+# Started once by scripts/setup-server.sh. No host ports: only containers on
+# athar-events-network can reach them.
+name: athar-events-data
+
+services:
+  postgres:
+    image: postgres:18.1-alpine
+    container_name: athar-events-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:?POSTGRES_SUPERUSER must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD must be set in .env}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME must be set in .env}
+      MIGRATION_DB_USER: ${MIGRATION_DB_USER:?MIGRATION_DB_USER must be set in .env}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD must be set in .env}
+      APP_DB_USER: ${DB_USER:?DB_USER must be set in .env}
+      APP_DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      # Runs only when the data volume is empty (first start).
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    networks:
+      - athar-events-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+
+  redis:
+    image: redis:8.2-alpine
+    container_name: athar-events-redis
+    restart: unless-stopped
+    command: ['sh', '-c', 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes']
+    volumes:
+      - redis-data:/data
+    networks:
+      - athar-events-network
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    mem_limit: 512m
+
+networks:
+  athar-events-network:
+    name: athar-events-network
+
+volumes:
+  postgres-data:
+    name: athar-events-postgres-data
+  redis-data:
+    name: athar-events-redis-data
