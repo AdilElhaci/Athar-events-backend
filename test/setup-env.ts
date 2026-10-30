@@ -1,0 +1,20 @@
+// Test environment: isolated database and Redis DB index; secrets are throwaway test values.
+Object.assign(process.env, {
+  NODE_ENV: 'test',
+  APP_ORIGIN: 'http://localhost:3000',
+  CORS_ORIGINS: 'http://localhost:3000',
+  TRUST_PROXY_HOPS: '0',
+  DB_HOST: 'localhost',
+  DB_PORT: '5433',
+  DB_USER: 'athar_events',
+  DB_PASSWORD: 'athar_events_dev',
+  DB_NAME: 'athar_events_test',
+  DB_SSL: 'false',
+  REDIS_URL: 'redis://localhost:6380/1',
+  JWT_SECRET: 'test-jwt-secret-0123456789abcdefghijklmnopqrstuv',
+  TOKEN_PEPPER: 'test-token-pepper-0123456789abcdefghijklmnopqrs',
+  OTP_SECRET: 'test-otp-secret-0123456789abcdefghijklmnopqrstuv',
+  COOKIE_SECURE: 'true',
+  SMTP_HOST: '',
+  MAIL_FROM: 'no-reply@example.com',
+});
