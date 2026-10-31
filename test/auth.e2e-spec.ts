@@ -289,6 +289,137 @@ describe('Authentication and admin (e2e)', () => {
     });
   });
 
+  describe('profile and change password', () => {
+    const patch = (path: string, access: string) =>
+      request(app.getHttpServer())
+        .patch(`/api${path}`)
+        .set('Origin', ORIGIN)
+        .set('X-Requested-With', 'athar-events')
+        .set('Authorization', `Bearer ${access}`);
+
+    it('updates the name and a normalised Saudi mobile, and clears the phone', async () => {
+      const access = (await register('profile@example.com')).body.data
+        .accessToken as string;
+
+      const updated = await patch('/auth/me', access)
+        .send({ name: 'سارة العتيبي', phone: '٠٥٠ ١٢٣ ٤٥٦٧' })
+        .expect(200);
+      expect(updated.body.code).toBe('auth.profile_updated');
+      expect(updated.body.data).toMatchObject({
+        name: 'سارة العتيبي',
+        phone: '966501234567',
+      });
+
+      const bad = await patch('/auth/me', access)
+        .send({ phone: '0112345678' })
+        .expect(400);
+      expect(bad.body.code).toBe('user.phone_invalid');
+
+      const cleared = await patch('/auth/me', access)
+        .send({ phone: '' })
+        .expect(200);
+      expect(cleared.body.data.phone).toBeNull();
+      expect(cleared.body.data.name).toBe('سارة العتيبي');
+
+      await request(app.getHttpServer())
+        .patch('/api/auth/me')
+        .set('Authorization', `Bearer ${access}`)
+        .send({ name: 'بدون رأس الحماية' })
+        .expect(403);
+    });
+
+    it('changes the password only with the current one and ends every session', async () => {
+      const access = (await register('changer@example.com')).body.data
+        .accessToken as string;
+      const change = (body: object) =>
+        post('/auth/change-password')
+          .set('Authorization', `Bearer ${access}`)
+          .send(body);
+
+      const wrong = await change({
+        currentPassword: 'not my password',
+        newPassword: 'new-pass-8',
+      }).expect(400);
+      expect(wrong.body.code).toBe('auth.current_password_invalid');
+
+      const short = await change({
+        currentPassword: STRONG,
+        newPassword: 'seven77',
+      }).expect(400);
+      expect(short.body.code).toBe('password.too_short');
+
+      const ok = await change({
+        currentPassword: STRONG,
+        newPassword: 'new-pass-8',
+      }).expect(200);
+      expect(ok.body.code).toBe('auth.password_changed');
+      expect(
+        mail.last('changer@example.com', 'password_changed'),
+      ).toBeDefined();
+
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${access}`)
+        .expect(401);
+      await post('/auth/login')
+        .send({ email: 'changer@example.com', password: STRONG })
+        .expect(401);
+      await post('/auth/login')
+        .send({ email: 'changer@example.com', password: 'new-pass-8' })
+        .expect(200);
+    });
+  });
+
+  describe('contact form', () => {
+    const message = {
+      name: 'نورة',
+      phone: '0501234567',
+      subject: 'أرغب بمعرفة تفاصيل باقة فرحة لحفل في ديسمبر.',
+    };
+
+    it('e-mails a valid message to the team inbox, escaping its content', async () => {
+      const before = mail.sent.length;
+      const res = await post('/contact')
+        .send({ ...message, name: '<b>نورة</b>' })
+        .expect(200);
+      expect(res.body.code).toBe('contact.sent');
+      const sent = mail.sent.slice(before);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].to).toBe('no-reply@example.com'); // MAIL_FROM fallback
+      expect(sent[0].message.kind).toBe('contact_message');
+      expect(sent[0].message.text).toContain('+966501234567');
+      expect(sent[0].message.html).toContain('&lt;b&gt;');
+      expect(sent[0].message.html).not.toContain('<b>نورة');
+    });
+
+    it('rejects an invalid phone, short subjects and missing CSRF headers', async () => {
+      const phone = await post('/contact')
+        .send({ ...message, phone: '12345' })
+        .expect(400);
+      expect(phone.body.code).toBe('user.phone_invalid');
+      await post('/contact')
+        .send({ ...message, subject: 'قصير' })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/api/contact')
+        .send(message)
+        .expect(403);
+    });
+
+    it('silently drops honeypot submissions and limits messages per IP', async () => {
+      const before = mail.sent.length;
+      await post('/contact')
+        .send({ ...message, website: 'http://spam.example' })
+        .expect(200);
+      expect(mail.sent.length).toBe(before);
+
+      let last = 0;
+      for (let i = 0; i < 6; i++)
+        last = (await post('/contact').send(message)).status;
+      expect(last).toBe(429);
+    });
+  });
+
   describe('forgot and reset password', () => {
     it('resets the password, ends every session and keeps the response generic', async () => {
       const reg = await register('reset@example.com');

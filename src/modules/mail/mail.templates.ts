@@ -5,7 +5,8 @@ export interface MailMessage {
     | 'password_reset'
     | 'password_changed'
     | 'admin_invite'
-    | 'admin_promoted';
+    | 'admin_promoted'
+    | 'contact_message';
   subject: string;
   text: string;
   html: string;
@@ -117,6 +118,27 @@ export function adminPromotedMail(loginUrl: string): MailMessage {
     html: layout(
       title,
       `<p>مُنح حسابك صلاحيات المدير، وسُجّل خروجك من جميع الأجهزة لتسجيل الدخول من جديد.</p>${button(loginUrl, 'تسجيل الدخول')}`,
+    ),
+  };
+}
+
+/** Contact-form message forwarded to the team inbox (not sent to the visitor). */
+export function contactMessageMail(input: {
+  name: string;
+  phone: string;
+  subject: string;
+}): MailMessage {
+  const title = 'رسالة جديدة من نموذج التواصل';
+  const phone = `+${input.phone}`;
+  return {
+    kind: 'contact_message',
+    subject: `${title} — ${input.name}`,
+    text: `الاسم: ${input.name}\nالجوال: ${phone}\n\n${input.subject}`,
+    html: layout(
+      title,
+      `<p><strong>الاسم:</strong> ${escapeHtml(input.name)}</p>
+<p><strong>الجوال:</strong> <span dir="ltr">${escapeHtml(phone)}</span></p>
+<p style="white-space:pre-wrap">${escapeHtml(input.subject)}</p>`,
     ),
   };
 }

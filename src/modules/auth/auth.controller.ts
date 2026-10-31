@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
@@ -19,12 +20,14 @@ import { withMessage } from '../../shared/interceptors/response.interceptor';
 import { toUserView } from '../users/dto/user.dto';
 import { CurrentUser } from './current-user.decorator';
 import {
+  ChangePasswordDto,
   EmailDto,
   LoginDto,
   RegisterCompleteDto,
   RegisterStartDto,
   RegisterVerifyDto,
   TokenPasswordDto,
+  UpdateProfileDto,
 } from './dto/auth.dto';
 import { CsrfGuard } from './guards/csrf.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -177,6 +180,41 @@ export class AuthController {
   @ApiBearerAuth()
   async me(@CurrentUser() user: AuthenticatedUser) {
     return toUserView(await this.auth.me(user.id));
+  }
+
+  @Patch('me')
+  @UseGuards(CsrfGuard, JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update the signed-in user's name and/or phone." })
+  async updateMe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    const updated = await this.auth.updateProfile(user.id, dto);
+    return withMessage(toUserView(updated), 'auth.profile_updated');
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CsrfGuard, JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 15 * MINUTE } })
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Checks the current password, sets the new one and ends every session.',
+  })
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+    clearSessionCookies(res, this.secureCookies);
+    return withMessage(null, 'auth.password_changed');
   }
 
   @Post('forgot-password')

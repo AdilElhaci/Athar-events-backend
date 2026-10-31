@@ -32,10 +32,14 @@ export const MESSAGES = {
   'auth.password_reset': 'تم تغيير كلمة المرور، سجّل الدخول بها الآن.',
   'auth.invite_invalid': 'رابط الدعوة غير صالح أو انتهت صلاحيته.',
   'auth.invite_accepted': 'تم تفعيل حسابك، سجّل الدخول الآن.',
-  'password.too_short': 'كلمة المرور يجب ألا تقل عن 12 حرفاً.',
+  'password.too_short': 'كلمة المرور يجب ألا تقل عن 8 أحرف.',
   'password.too_long': 'كلمة المرور يجب ألا تزيد على 128 حرفاً.',
-  'password.too_common': 'كلمة المرور شائعة أو سهلة التخمين، اختر غيرها.',
-  'password.contains_identity': 'لا تستخدم بريدك أو اسمك في كلمة المرور.',
+  'contact.sent': 'وصلت رسالتك، وسيتواصل معك فريقنا قريباً.',
+  'auth.profile_updated': 'تم حفظ التغييرات.',
+  'auth.password_changed': 'تم تغيير كلمة المرور، سجّل الدخول بها الآن.',
+  'auth.current_password_invalid': 'كلمة المرور الحالية غير صحيحة.',
+  'user.phone_invalid':
+    'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',
 } as const;
 
 export type ErrorCode = keyof typeof MESSAGES;

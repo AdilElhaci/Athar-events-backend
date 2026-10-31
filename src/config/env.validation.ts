@@ -122,6 +122,11 @@ export class EnvironmentVariables {
   @IsString()
   MAIL_FROM!: string;
 
+  /** Team inbox for contact-form messages; defaults to MAIL_FROM. */
+  @IsOptional()
+  @IsString()
+  CONTACT_INBOX?: string;
+
   @IsString()
   MAIL_FROM_NAME = 'أثر للمناسبات';
 }

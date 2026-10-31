@@ -36,6 +36,10 @@ export class User {
   @Column({ type: 'varchar', length: 254, unique: true })
   email!: string;
 
+  /** Saudi mobile as 9665XXXXXXXX (E.164 without "+"); optional, set from the profile. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  phone!: string | null;
+
   @Column({
     name: 'password_hash',
     type: 'varchar',

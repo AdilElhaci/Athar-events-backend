@@ -48,6 +48,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     CsrfGuard,
   ],
   exports: [
+    CsrfGuard,
+    RateLimitService,
     JwtAuthGuard,
     UserTypeGuard,
     AdminProvisioningService,

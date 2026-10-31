@@ -9,6 +9,7 @@ export interface UserView {
   status: UserStatus;
   name: string;
   email: string;
+  phone: string | null;
   emailVerifiedAt: Date | null;
   lastLoginAt: Date | null;
   createdAt: Date;
@@ -20,6 +21,7 @@ export const toUserView = (user: User): UserView => ({
   status: user.status,
   name: user.name,
   email: user.email,
+  phone: user.phone,
   emailVerifiedAt: user.emailVerifiedAt,
   lastLoginAt: user.lastLoginAt,
   createdAt: user.createdAt,

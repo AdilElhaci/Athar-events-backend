@@ -16,6 +16,7 @@ import {
   registerCodeMail,
 } from '../../mail/mail.templates';
 import { User, UserStatus, UserType } from '../../users/entities/user.entity';
+import { normalizeSaudiMobile } from '../../users/utils/phone';
 import { AuthToken, TokenPurpose } from '../entities/auth-token.entity';
 import {
   ChallengePurpose,
@@ -43,6 +44,8 @@ export const INVITE_TOKEN_TTL_MS = 24 * 60 * 60_000;
 /** Failed password attempts allowed per (IP, email) and per email across all IPs, per 15 minutes. */
 const LOGIN_FAILS_PER_IP_EMAIL = 10;
 const LOGIN_FAILS_PER_EMAIL = 50;
+/** Wrong current-password attempts allowed per user when changing the password, per 15 minutes. */
+const CHANGE_PASSWORD_FAILS_PER_USER = 10;
 /** Verification attempts per email across replacement codes, per hour. */
 const VERIFY_ATTEMPTS_PER_EMAIL = 15;
 
@@ -197,10 +200,7 @@ export class AuthService {
       );
       if (!token) throw badRequest('auth.registration_token_invalid');
 
-      const policy = checkPassword(password, {
-        email: token.email,
-        name: token.name,
-      });
+      const policy = checkPassword(password);
       if (policy) throw badRequest(policy);
 
       if (await manager.exists(User, { where: { email: token.email } }))
@@ -328,10 +328,7 @@ export class AuthService {
       if (!user || user.status !== UserStatus.ACTIVE)
         throw badRequest('auth.reset_token_invalid');
 
-      const policy = checkPassword(password, {
-        email: user.email,
-        name: user.name,
-      });
+      const policy = checkPassword(password);
       if (policy) throw badRequest(policy);
 
       const now = new Date();
@@ -375,10 +372,7 @@ export class AuthService {
       ) {
         throw badRequest('auth.invite_invalid');
       }
-      const policy = checkPassword(password, {
-        email: user.email,
-        name: user.name,
-      });
+      const policy = checkPassword(password);
       if (policy) throw badRequest(policy);
 
       const now = new Date();
@@ -410,6 +404,77 @@ export class AuthService {
   async logoutEverywhere(userId: string): Promise<void> {
     await this.dataSource.transaction((manager) =>
       this.sessions.revokeAll(manager, userId, 'logout_all'),
+    );
+  }
+
+  // ---------------------------------------------------------------- profile
+
+  /** Updates the signed-in user's name and/or phone (Saudi mobile, stored as 9665XXXXXXXX). */
+  async updateProfile(
+    userId: string,
+    input: { name?: string; phone?: string | null },
+  ): Promise<User> {
+    const changes: Partial<Pick<User, 'name' | 'phone'>> = {};
+    if (input.name !== undefined) changes.name = input.name;
+    if (input.phone !== undefined) {
+      const phone = normalizeSaudiMobile(input.phone);
+      if (phone === undefined) throw badRequest('user.phone_invalid');
+      changes.phone = phone;
+    }
+    if (Object.keys(changes).length > 0)
+      await this.dataSource.getRepository(User).update({ id: userId }, changes);
+    return this.me(userId);
+  }
+
+  /**
+   * Changes the password after checking the current one, then ends every session (as a reset
+   * does): the user signs in again with the new password, and other devices are signed out.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    if (
+      !(await this.rateLimits.hit(
+        'change-password:user',
+        userId,
+        CHANGE_PASSWORD_FAILS_PER_USER,
+        900,
+      ))
+    ) {
+      throw tooManyRequests();
+    }
+    const policy = checkPassword(newPassword);
+    if (policy) throw badRequest(policy);
+
+    const email = await this.dataSource.transaction(async (manager) => {
+      const user = await manager
+        .getRepository(User)
+        .createQueryBuilder('u')
+        .addSelect('u.passwordHash')
+        .setLock('pessimistic_write')
+        .where('u.id = :id', { id: userId })
+        .getOne();
+      if (!user || user.status !== UserStatus.ACTIVE) throw unauthorized();
+      if (!(await this.passwords.verify(user.passwordHash, currentPassword)))
+        throw badRequest('auth.current_password_invalid');
+
+      await manager.update(
+        User,
+        { id: user.id },
+        {
+          passwordHash: await this.passwords.hash(newPassword),
+          passwordChangedAt: new Date(),
+        },
+      );
+      await this.sessions.revokeAll(manager, user.id, 'password_changed');
+      return user.email;
+    });
+    await this.rateLimits.reset('change-password:user', userId);
+    this.mail.sendLater(
+      email,
+      passwordChangedMail(this.appUrl('/auth/forgot-password')),
     );
   }
 

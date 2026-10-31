@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
   IsEmail,
+  IsOptional,
   IsString,
   Length,
   Matches,
@@ -65,4 +66,30 @@ export class TokenPasswordDto extends PasswordField {
   @IsString()
   @Length(20, 100)
   token!: string;
+}
+
+/** Profile edit: both fields optional; an empty phone clears it. The phone format is checked in the service. */
+export class UpdateProfileDto {
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(2, 120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string | null;
+}
+
+export class ChangePasswordDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(512)
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(512)
+  newPassword!: string;
 }

@@ -1,41 +1,54 @@
 import { escapeLike } from '../../../shared/pagination';
+import { normalizeSaudiMobile } from '../../users/utils/phone';
 import { checkPassword } from './password-policy';
 
-describe('checkPassword', () => {
-  const id = { email: 'sara.alqahtani@example.com', name: 'Sara Ali' };
-
-  it('accepts a long passphrase, including Arabic and spaces', () => {
-    expect(checkPassword('قصر الضيافة 2026 مساءً', id)).toBeNull();
-    expect(checkPassword('correct horse battery', id)).toBeNull();
+describe('checkPassword (D-32: 8 characters, no other rules)', () => {
+  it('accepts 8 characters of any kind', () => {
+    expect(checkPassword('12345678')).toBeNull();
+    expect(checkPassword('password')).toBeNull();
+    expect(checkPassword('قصر2026')).toBe('password.too_short'); // 7
+    expect(checkPassword('قصر 2026')).toBeNull(); // 8, Arabic and a space
   });
 
   it('counts code points, not UTF-16 units', () => {
-    expect(checkPassword('😀😀😀😀😀😀😀😀😀😀😀', id)).toBe(
-      'password.too_short',
-    ); // 11 emoji
+    expect(checkPassword('😀😀😀😀😀😀😀')).toBe('password.too_short'); // 7 emoji
+    expect(checkPassword('😀😀😀😀😀😀😀😀')).toBeNull(); // 8 emoji
   });
 
-  it('enforces length bounds', () => {
-    expect(checkPassword('short pass1', id)).toBe('password.too_short');
-    expect(checkPassword('x'.repeat(129), id)).toBe('password.too_long');
-  });
-
-  it('rejects common and repeated passwords', () => {
-    expect(checkPassword('Password1234', id)).toBe('password.too_common');
-    expect(checkPassword('aaaaaaaaaaaaaa', id)).toBe('password.too_common');
-  });
-
-  it('rejects passwords containing the email local part or the name', () => {
-    expect(checkPassword('sara.alqahtani2026!', id)).toBe(
-      'password.contains_identity',
-    );
-    expect(checkPassword('my name is saraali!!', id)).toBe(
-      'password.contains_identity',
-    );
+  it('enforces only the length bounds', () => {
+    expect(checkPassword('short12')).toBe('password.too_short');
+    expect(checkPassword('x'.repeat(129))).toBe('password.too_long');
+    expect(checkPassword('aaaaaaaa')).toBeNull();
   });
 
   it('never trims: surrounding spaces are part of the password', () => {
-    expect(checkPassword('  eleven ch ', id)).toBeNull();
+    expect(checkPassword('  abcd  ')).toBeNull();
+  });
+});
+
+describe('normalizeSaudiMobile', () => {
+  it.each([
+    ['0501234567', '966501234567'],
+    ['501234567', '966501234567'],
+    ['+966 50 123 4567', '966501234567'],
+    ['00966501234567', '966501234567'],
+    ['966-50-123-4567', '966501234567'],
+    ['٠٥٠١٢٣٤٥٦٧', '966501234567'],
+  ])('normalises %s', (input, expected) => {
+    expect(normalizeSaudiMobile(input)).toBe(expected);
+  });
+
+  it('treats an empty value as "no phone"', () => {
+    expect(normalizeSaudiMobile('')).toBeNull();
+    expect(normalizeSaudiMobile('  ')).toBeNull();
+    expect(normalizeSaudiMobile(null)).toBeNull();
+  });
+
+  it('rejects numbers that are not Saudi mobiles', () => {
+    expect(normalizeSaudiMobile('0112345678')).toBeUndefined(); // landline
+    expect(normalizeSaudiMobile('+971501234567')).toBeUndefined();
+    expect(normalizeSaudiMobile('05012345')).toBeUndefined();
+    expect(normalizeSaudiMobile('abc')).toBeUndefined();
   });
 });
 
