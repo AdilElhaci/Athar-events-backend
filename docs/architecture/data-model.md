@@ -1,6 +1,6 @@
 # Data model
 
-**Status: proposed schema, nothing migrated.** PostgreSQL, TypeORM entities, conventions in [conventions.md](conventions.md#data-access-and-invariants). Every table has `id uuid PK`, `created_at timestamptz`, and `updated_at timestamptz` where rows change; these are omitted below. Columns are written in snake_case as stored.
+**Status: proposed schema; identity, `packages` and `events` are migrated.** PostgreSQL, TypeORM entities, conventions in [conventions.md](conventions.md#data-access-and-invariants). Every table has `id uuid PK`, `created_at timestamptz`, and `updated_at timestamptz` where rows change; these are omitted below. Columns are written in snake_case as stored.
 
 ## Entity map
 
@@ -42,7 +42,7 @@ Lock order in every session operation: user → session → refresh token.
 | extra_margin | int | `CHECK (>= 0)` |
 | price_halalas | int | `CHECK (> 0)` |
 | currency | varchar(3) default `SAR` | |
-| is_active, is_featured | boolean | Only active packages are listed publicly |
+| is_active, is_featured | boolean default `false` | Only active packages are listed publicly |
 | sort_order | int default 0 | |
 
 ## Events
@@ -72,7 +72,7 @@ Lock order in every session operation: user → session → refresh token.
 | admission_opens_at, admission_closes_at | timestamptz | Defaults `starts_at − 3h` / `starts_at + 12h` ([OQ-15](../product/open-questions.md)) |
 | paid_at, cancelled_at, closed_at | timestamptz null | |
 
-Checks: `send_at < starts_at` when set; `admission_opens_at < admission_closes_at`.
+Checks: `send_at < starts_at` and `requested_send_at < starts_at` when set; `admission_opens_at < admission_closes_at`. Migrated 2026-11-02 (`AddEvents`), except `approved_content_id`, which arrives with `invitation_contents`.
 
 ### invitation_contents
 

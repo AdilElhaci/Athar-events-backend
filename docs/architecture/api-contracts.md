@@ -38,10 +38,10 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 
 | Method | Path | Auth | Request | Response `data` | Notes / codes |
 | --- | --- | --- | --- | --- | --- |
-| POST | `/events` | any¹ | `{ packageId, name, startsAt, venueName, venueMapUrl?, requestedSendAt? }` | `IEvent` | ¹ creates as owner; 422 `events.package_inactive`, 422 `events.starts_in_past` |
+| POST | `/events` | owner | `{ packageId, name, startsAt, venueName, venueMapUrl?, requestedSendAt? }` | `IEvent` | Implemented 2026-11-02. 403 for admins; 422 `events.package_inactive`, `events.starts_in_past`, `events.send_after_start`, `events.send_in_past` |
 | GET | `/events` | owner | `?page&limit&search&status` | `Paginated<IEventListItem>` | Own events only |
-| GET | `/events/:id` | owner | — | `IEvent` (with state dimensions and next action) | 404 if not owned |
-| PATCH | `/events/:id` | owner | editable fields | `IEvent` | 409 `events.locked` once approved/scheduled; package change only before checkout |
+| GET | `/events/:id` | owner | — | `IEvent` (with state dimensions, `nextAction`, `editable`, `packageEditable`) | 404 if not owned |
+| PATCH | `/events/:id` | owner | editable fields | `IEvent` | 409 `events.locked` once approved/scheduled; 409 `events.package_locked` once checkout started; changing `startsAt` resets the admission window |
 | POST | `/events/:id/checkout` | owner | — | `{ paymentUrl, paymentAttemptId }` | Reuses an open attempt; 409 `events.already_paid` |
 | GET | `/events/:id/payment-status` | owner | `?paymentAttemptId` | `{ paymentStatus, attemptStatus }` | Triggers a server-side Moyasar fetch if `PENDING` (rate-limited); used by `/payment/return` |
 | GET | `/events/:id/summary` | owner | — | `IEventSummary` | Polled every 10 s |
@@ -83,7 +83,7 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | POST | `/admin/guests/:guestId/qr/reissue` | `{ reason }` | `IAdminGuest` | Revokes the old QR, sends a new one by template |
 | GET | `/admin/events/:id/messages` | `?state&delivery&kind&page&limit` | `Paginated<IMessage>` | Message log |
 | POST | `/admin/messages/:messageId/resolve` | `{ resolution: 'MARK_SENT' \| 'MARK_FAILED' \| 'RESEND', reason }` | `IMessage` | Only for `UNKNOWN`/`FAILED` |
-| GET / POST / PATCH | `/admin/packages`, `/admin/packages/:id` | package fields | `IPackage` | Deactivate instead of delete once used |
+| GET / POST / PATCH | `/admin/packages`, `/admin/packages/:id` | package fields | `IPackage` | `GET` is paginated and includes inactive packages. No delete: deactivate |
 | GET | `/admin/users` | `?type&status&search&page&limit` | `Paginated<IAdminUser>` | |
 | POST | `/admin/users` | `{ email, name }` | `IAdminUser` | Creates a `PLATFORM_ADMIN` |
 | PATCH | `/admin/users/:id/status` | `{ status }` | `IAdminUser` | Cannot suspend yourself |

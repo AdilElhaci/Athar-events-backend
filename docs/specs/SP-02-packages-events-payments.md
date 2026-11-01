@@ -1,6 +1,6 @@
 # SP-02: Packages, events and payments
 
-*Status: Approved outline. Implementation: see [progress](../delivery/progress.md) (`T-P2-*`).*
+*Status: Approved outline; packages implemented 2026-11-01 (`T-P2-01`), event creation and editing 2026-11-02 (`T-P2-03`). Implementation: see [progress](../delivery/progress.md) (`T-P2-*`).*
 
 ## 1. Purpose and source
 
@@ -18,9 +18,9 @@ Package fields; event fields (name, `startsAt` in Asia/Riyadh, venue name, map U
 
 ## 4. Behaviour
 
-**Packages.** CRUD for admins; deactivate rather than delete once an event uses a package. Public list returns active packages ordered by `sort_order`.
+**Packages.** Admins add, edit, activate and deactivate; there is no delete. New packages start inactive and are not seeded. Public list returns active packages ordered by `sort_order`.
 
-**Event creation.** Owner (any signed-in non-admin user) creates an event in `DRAFT`, `UNPAID`, `AWAITING_LIST`, `NOT_REQUESTED`, `NOT_SCHEDULED`, with a package snapshot and a reference code. `startsAt` must be in the future; `requestedSendAt` must be before `startsAt`. Admission window defaults are set from `startsAt`.
+**Event creation.** Owner (any signed-in non-admin user) creates an event in `DRAFT`, `UNPAID`, `AWAITING_LIST`, `NOT_REQUESTED`, `NOT_SCHEDULED`, with a package snapshot and a reference code. `startsAt` must be in the future; `requestedSendAt` must be in the future and before `startsAt`. Admission window defaults are set from `startsAt`.
 
 **Editing.** Owner may edit name, date, venue, map link and requested send time until the invitation is approved; changing the package is allowed only before a payment attempt exists. Editing a field used in the invitation creates no automatic approval; an admin regenerates the invitation content. After scheduling, only admins correct fields (audited) ([OQ-16](../product/open-questions.md)).
 

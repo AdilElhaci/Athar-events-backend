@@ -636,6 +636,355 @@ describe('Authentication and admin (e2e)', () => {
       ).toBe(true);
     });
 
+    describe('packages', () => {
+      const FARHA = {
+        name: 'فرحة',
+        description: 'لمناسبتك التي تجمع الأحبة',
+        invitationAllowance: 250,
+        extraMargin: 25,
+        priceHalalas: 99000,
+      };
+      const publicList = () =>
+        request(app.getHttpServer()).get('/api/packages').expect(200);
+      const adminPost = (token: string) =>
+        post('/admin/packages').set('Authorization', `Bearer ${token}`);
+      const adminPatch = (token: string, id: string) =>
+        request(app.getHttpServer())
+          .patch(`/api/admin/packages/${id}`)
+          .set('Origin', ORIGIN)
+          .set('X-Requested-With', 'athar-events')
+          .set('Authorization', `Bearer ${token}`);
+
+      it('lets only admins manage packages', async () => {
+        await post('/admin/packages').send(FARHA).expect(401);
+        await adminPost(ownerAccess).send(FARHA).expect(403);
+        await request(app.getHttpServer())
+          .post('/api/admin/packages')
+          .set('Authorization', `Bearer ${adminAccess}`)
+          .send(FARHA)
+          .expect(403); // no CSRF header
+        await request(app.getHttpServer())
+          .get('/api/admin/packages')
+          .set('Authorization', `Bearer ${ownerAccess}`)
+          .expect(403);
+      });
+
+      it('lists only active packages publicly, in display order', async () => {
+        const hidden = await adminPost(adminAccess).send(FARHA).expect(201);
+        expect(hidden.body.data).toMatchObject({
+          isActive: false,
+          currency: 'SAR',
+        });
+        expect((await publicList()).body.data).toEqual([]);
+
+        const second = await adminPost(adminAccess)
+          .send({ ...FARHA, name: 'أثر', isActive: true, sortOrder: 2 })
+          .expect(201);
+        const first = await adminPost(adminAccess)
+          .send({ ...FARHA, name: 'لمة', isActive: true, sortOrder: 1 })
+          .expect(201);
+        const listed = (await publicList()).body.data;
+        expect(listed.map((p: { id: string }) => p.id)).toEqual([
+          first.body.data.id,
+          second.body.data.id,
+        ]);
+        expect(listed[0]).not.toHaveProperty('isActive');
+
+        const secondId: string = second.body.data.id;
+        await adminPatch(adminAccess, secondId)
+          .send({ isActive: false, priceHalalas: 120000 })
+          .expect(200);
+        expect((await publicList()).body.data).toHaveLength(1);
+
+        const all = await request(app.getHttpServer())
+          .get('/api/admin/packages?limit=100')
+          .set('Authorization', `Bearer ${adminAccess}`)
+          .expect(200);
+        expect(all.body.data.meta.total).toBe(3);
+
+        const log = await db.query(
+          `SELECT "action", "summary" FROM "admin_actions" WHERE "target_id" = $1 ORDER BY "created_at"`,
+          [secondId],
+        );
+        expect(log.map((r: { action: string }) => r.action)).toEqual([
+          'package.created',
+          'package.updated',
+        ]);
+        expect(log[1].summary.fields.sort()).toEqual([
+          'isActive',
+          'priceHalalas',
+        ]);
+      });
+
+      it('rejects invalid package fields', async () => {
+        const invalid = [
+          { ...FARHA, invitationAllowance: 0 },
+          { ...FARHA, extraMargin: -1 },
+          { ...FARHA, priceHalalas: 0 },
+          { ...FARHA, priceHalalas: 2_147_483_648 },
+          { ...FARHA, priceHalalas: 99.5 },
+          { ...FARHA, name: ' ' },
+          { ...FARHA, currency: 'USD' },
+        ];
+        for (const body of invalid)
+          await adminPost(adminAccess).send(body).expect(400);
+
+        const created = await adminPost(adminAccess).send(FARHA).expect(201);
+        const id: string = created.body.data.id;
+        await adminPatch(adminAccess, id).send({ name: null }).expect(400);
+        await adminPatch(adminAccess, id)
+          .send({ priceHalalas: null })
+          .expect(400);
+        const cleared = await adminPatch(adminAccess, id)
+          .send({ description: '  ' })
+          .expect(200);
+        expect(cleared.body.data.description).toBeNull();
+        await adminPatch(adminAccess, '00000000-0000-4000-8000-000000000000')
+          .send({ name: 'أثر' })
+          .expect(404);
+      });
+    });
+
+    describe('events', () => {
+      const HOUR = 3_600_000;
+      const inHours = (hours: number) =>
+        new Date(Date.now() + hours * HOUR).toISOString();
+      const MISSING = '00000000-0000-4000-8000-000000000000';
+      let packageId: string;
+      let otherOwnerAccess: string;
+
+      const send = (
+        method: 'post' | 'patch' | 'get',
+        path: string,
+        token: string,
+      ) =>
+        request(app.getHttpServer())
+          [method](`/api${path}`)
+          .set('Origin', ORIGIN)
+          .set('X-Requested-With', 'athar-events')
+          .set('Authorization', `Bearer ${token}`);
+      const eventBody = (overrides: object = {}) => ({
+        packageId,
+        name: 'زفاف نورة',
+        startsAt: inHours(240),
+        venueName: 'قاعة النخيل',
+        ...overrides,
+      });
+      const createPackage = async (overrides: object = {}) => {
+        const res = await send('post', '/admin/packages', adminAccess)
+          .send({
+            name: 'لمّة',
+            invitationAllowance: 100,
+            extraMargin: 10,
+            priceHalalas: 49000,
+            isActive: true,
+            ...overrides,
+          })
+          .expect(201);
+        return res.body.data.id as string;
+      };
+
+      beforeAll(async () => {
+        packageId = await createPackage();
+        const other = await register('other-owner@example.com');
+        otherOwnerAccess = other.body.data.accessToken;
+      });
+
+      it('creates an unpaid event with a package snapshot and defaults', async () => {
+        const startsAt = inHours(240);
+        const res = await send('post', '/events', ownerAccess)
+          .send(
+            eventBody({
+              startsAt,
+              venueMapUrl: 'https://maps.example.com/venue',
+              requestedSendAt: inHours(100),
+            }),
+          )
+          .expect(201);
+        const event = res.body.data;
+        expect(res.body.code).toBe('event.created');
+        expect(event.referenceCode).toMatch(/^AE-\d{6}$/);
+        expect(event).toMatchObject({
+          status: 'DRAFT',
+          paymentStatus: 'UNPAID',
+          listStatus: 'AWAITING_LIST',
+          approvalStatus: 'NOT_REQUESTED',
+          campaignStatus: 'NOT_SCHEDULED',
+          nextAction: 'COMPLETE_PAYMENT',
+          editable: true,
+          packageEditable: true,
+          package: {
+            id: packageId,
+            name: 'لمّة',
+            invitationAllowance: 100,
+            extraMargin: 10,
+            priceHalalas: 49000,
+            currency: 'SAR',
+          },
+        });
+        const start = new Date(startsAt).getTime();
+        expect(new Date(event.admissionOpensAt as string).getTime()).toBe(
+          start - 3 * HOUR,
+        );
+        expect(new Date(event.admissionClosesAt as string).getTime()).toBe(
+          start + 12 * HOUR,
+        );
+      });
+
+      it('gives each event its own reference', async () => {
+        const first = await send('post', '/events', ownerAccess)
+          .send(eventBody())
+          .expect(201);
+        const second = await send('post', '/events', ownerAccess)
+          .send(eventBody())
+          .expect(201);
+        expect(first.body.data.referenceCode).not.toBe(
+          second.body.data.referenceCode,
+        );
+      });
+
+      it('keeps events private to their owner', async () => {
+        const res = await send('post', '/events', ownerAccess)
+          .send(eventBody({ name: 'مناسبة خاصة جداً' }))
+          .expect(201);
+        const id: string = res.body.data.id;
+
+        await request(app.getHttpServer()).get(`/api/events/${id}`).expect(401);
+        await send('get', `/events/${id}`, otherOwnerAccess).expect(404);
+        await send('patch', `/events/${id}`, otherOwnerAccess)
+          .send({ name: 'تغيير' })
+          .expect(404);
+        await send('get', `/events/${id}`, adminAccess).expect(403);
+        await send('post', '/events', adminAccess)
+          .send(eventBody())
+          .expect(403);
+
+        const others = await send(
+          'get',
+          '/events?search=' + encodeURIComponent('خاصة'),
+          otherOwnerAccess,
+        ).expect(200);
+        expect(others.body.data.items).toEqual([]);
+        const mine = await send(
+          'get',
+          '/events?search=' + encodeURIComponent('خاصة'),
+          ownerAccess,
+        ).expect(200);
+        expect(mine.body.data.items.map((e: { id: string }) => e.id)).toEqual([
+          id,
+        ]);
+        await send('get', `/events/${id}`, ownerAccess).expect(200);
+      });
+
+      it('refuses cross-site writes', async () => {
+        await request(app.getHttpServer())
+          .post('/api/events')
+          .set('Authorization', `Bearer ${ownerAccess}`)
+          .send(eventBody())
+          .expect(403);
+      });
+
+      it('rejects inactive packages and impossible times', async () => {
+        const inactive = await createPackage({ isActive: false });
+        const cases: Array<[object, string]> = [
+          [{ packageId: inactive }, 'events.package_inactive'],
+          [{ packageId: MISSING }, 'events.package_inactive'],
+          [{ startsAt: inHours(-1) }, 'events.starts_in_past'],
+          [{ requestedSendAt: inHours(241) }, 'events.send_after_start'],
+          [{ requestedSendAt: inHours(-1) }, 'events.send_in_past'],
+        ];
+        for (const [body, code] of cases) {
+          const res = await send('post', '/events', ownerAccess)
+            .send(eventBody(body))
+            .expect(422);
+          expect(res.body.code).toBe(code);
+        }
+        const invalid = [
+          { name: ' ' },
+          { startsAt: 'غداً' },
+          { venueName: '' },
+          { venueMapUrl: 'http://maps.example.com' },
+          { venueMapUrl: 'javascript:alert(1)' },
+          { priceHalalas: 1 },
+        ];
+        for (const body of invalid)
+          await send('post', '/events', ownerAccess)
+            .send(eventBody(body))
+            .expect(400);
+      });
+
+      it('freezes the snapshot against catalogue edits and allows owner edits', async () => {
+        const created = await send('post', '/events', ownerAccess)
+          .send(eventBody())
+          .expect(201);
+        const id: string = created.body.data.id;
+
+        await send('patch', `/admin/packages/${packageId}`, adminAccess)
+          .send({ priceHalalas: 99900 })
+          .expect(200);
+        const reread = await send('get', `/events/${id}`, ownerAccess).expect(
+          200,
+        );
+        expect(reread.body.data.package.priceHalalas).toBe(49000);
+
+        const startsAt = inHours(300);
+        const larger = await createPackage({
+          name: 'فرحة',
+          priceHalalas: 99000,
+        });
+        const edited = await send('patch', `/events/${id}`, ownerAccess)
+          .send({ name: 'زفاف سارة', startsAt, packageId: larger })
+          .expect(200);
+        expect(edited.body.data).toMatchObject({
+          name: 'زفاف سارة',
+          venueName: 'قاعة النخيل',
+          package: { id: larger, name: 'فرحة', priceHalalas: 99000 },
+        });
+        expect(
+          new Date(edited.body.data.admissionOpensAt as string).getTime(),
+        ).toBe(new Date(startsAt).getTime() - 3 * HOUR);
+        await send('patch', `/events/${id}`, ownerAccess)
+          .send({ name: null })
+          .expect(400);
+      });
+
+      it('locks the package once checkout started and everything once approved', async () => {
+        const created = await send('post', '/events', ownerAccess)
+          .send(eventBody())
+          .expect(201);
+        const id: string = created.body.data.id;
+        const other = await createPackage({ name: 'أثر' });
+
+        await db.query(
+          `UPDATE events SET payment_status = 'PENDING' WHERE id = $1`,
+          [id],
+        );
+        const pending = await send('patch', `/events/${id}`, ownerAccess)
+          .send({ packageId: other })
+          .expect(409);
+        expect(pending.body.code).toBe('events.package_locked');
+        await send('patch', `/events/${id}`, ownerAccess)
+          .send({ name: 'ما زال قابلاً للتعديل' })
+          .expect(200);
+
+        await db.query(
+          `UPDATE events SET payment_status = 'PAID', status = 'ACTIVE', approval_status = 'APPROVED' WHERE id = $1`,
+          [id],
+        );
+        const approved = await send('patch', `/events/${id}`, ownerAccess)
+          .send({ name: 'تغيير' })
+          .expect(409);
+        expect(approved.body.code).toBe('events.locked');
+        const read = await send('get', `/events/${id}`, ownerAccess).expect(
+          200,
+        );
+        expect(read.body.data).toMatchObject({
+          editable: false,
+          packageEditable: false,
+        });
+      });
+    });
+
     it('promoting an owner requires the explicit flag and ends their sessions', async () => {
       const provisioning = app.get(AdminProvisioningService);
       await expect(

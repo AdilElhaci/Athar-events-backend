@@ -6,6 +6,8 @@ import { AuthToken } from '../modules/auth/entities/auth-token.entity';
 import { EmailChallenge } from '../modules/auth/entities/email-challenge.entity';
 import { RefreshToken } from '../modules/auth/entities/refresh-token.entity';
 import { Session } from '../modules/auth/entities/session.entity';
+import { Event } from '../modules/events/entities/event.entity';
+import { Package } from '../modules/packages/entities/package.entity';
 import { User } from '../modules/users/entities/user.entity';
 
 export const ENTITIES = [
@@ -15,6 +17,8 @@ export const ENTITIES = [
   Session,
   RefreshToken,
   AdminAction,
+  Package,
+  Event,
 ];
 
 /** Shared by the Nest app, the migration CLI and the admin CLI. `synchronize` is always off. */

@@ -38,6 +38,16 @@ export const MESSAGES = {
   'auth.profile_updated': 'تم حفظ التغييرات.',
   'auth.password_changed': 'تم تغيير كلمة المرور، سجّل الدخول بها الآن.',
   'auth.current_password_invalid': 'كلمة المرور الحالية غير صحيحة.',
+  'package.created': 'تمت إضافة الباقة.',
+  'package.updated': 'تم حفظ الباقة.',
+  'event.created': 'تم إنشاء مناسبتك.',
+  'event.updated': 'تم حفظ التغييرات.',
+  'events.package_inactive': 'هذه الباقة لم تعد متاحة، اختر باقة أخرى.',
+  'events.starts_in_past': 'موعد المناسبة يجب أن يكون في المستقبل.',
+  'events.send_after_start': 'موعد الإرسال يجب أن يسبق موعد المناسبة.',
+  'events.send_in_past': 'موعد الإرسال يجب أن يكون في المستقبل.',
+  'events.locked': 'لا يمكن تعديل المناسبة بعد اعتماد الدعوة أو جدولتها.',
+  'events.package_locked': 'لا يمكن تغيير الباقة بعد بدء الدفع.',
   'user.phone_invalid':
     'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',
 } as const;

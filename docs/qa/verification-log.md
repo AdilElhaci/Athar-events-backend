@@ -51,3 +51,23 @@ Entry format:
 - Defects found by our own testing and fixed: post-login race redirected to the login page; unhandled promise rejection on failed login; ESM-only 12.x Nest companions broke Jest (pinned Nest-11 majors); `express` missing as a direct dependency; scaffold `tsconfig` not actually strict.
 - **Not verified (owner to do):** delivery through the real SMTP provider (all email here went to Mailpit), SPF/DKIM/DMARC, inbox placement (spam folder), real phones, screen readers, production proxy/IP forwarding.
 - Follow-ups: OQ-26, OQ-27, OQ-28; CI pipelines; Playwright suite in the frontend repository.
+
+## 2026-11-01 — Packages (T-P2-01)
+
+- Backend: e2e 28/28 (3 new: admin-only access and CSRF, public list of active packages in order, audit rows, field validation), unit 13/13, typecheck, ESLint, Prettier and build pass.
+- Migration `AddPackages` ran up, down and up on a scratch database. `migration:generate --check` reports nothing for `packages`; it does report pre-existing enum differences on the auth tables, which are not caused by this change.
+- Browser (Chromium, production build, real API and PostgreSQL): admin signs in, empty state, field errors, adds packages with Arabic-Indic digits and decimals, edits, activates and deactivates, reload. axe (WCAG 2 A/AA): 0 violations on the list and the dialog. Dialog closes on Escape and restores focus; no overflow at 360 px.
+- Landing: `API_URL` set only at runtime, as in Docker. Without a rebuild the page moved from its built state to the live packages through the 60 s revalidation, showed active packages only and no sample notice; a card links to `/auth/login?package=<id>`.
+- Not verified: the Docker image and the production server (not deployed).
+
+## 2026-11-02 — Owner events (T-P2-03 to T-P2-05)
+
+Uncommitted, not deployed. Ran on local Postgres, Redis and Mailpit with a production frontend build; scratch database dropped afterwards.
+
+- Backend: typecheck, lint, build pass; unit 25/25 (12 new, next-action logic); e2e 35/35 (7 new: snapshot and defaults, unique references, owner isolation 401/403/404, CSRF, inactive package and impossible times, snapshot unchanged by a catalogue edit, package lock after checkout starts, full lock after approval). Migration `AddEvents` up, down, up: table and sequence removed and restored.
+- Frontend: typecheck, lint, Prettier pass.
+- Real Chromium flow: landing package card → sign-in → register with the emailed code → SCR-11 with the package preselected → validation (empty, past date, http link, send after start) → review → create → SCR-13 (`AE-000001`, unpaid) → reload → edit → SCR-10. Also: default selection, deactivated package notice, signed-in `/auth/login?next=` honoured, external `next` ignored, unknown event.
+- axe (WCAG A/AA): 0 violations on details, review, overview and edit dialog. On SCR-10 and the package step the only finding is the green success toast's contrast (sonner `richColors`, global, not fixed).
+- No horizontal overflow at 320, 360, 768, 1024 on SCR-10, SCR-11, SCR-13.
+
+Not verified: states after payment (no path reaches them yet, covered by unit tests only), Docker image, production server. Not compared pixel by pixel with Figma; the wizard's selected package uses a ring where Figma has no selected state.

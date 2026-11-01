@@ -11,6 +11,8 @@ import { HealthController } from './health.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { ContactModule } from './modules/contact/contact.module';
 import { REDIS } from './modules/auth/services/rate-limit.service';
+import { EventsModule } from './modules/events/events.module';
+import { PackagesModule } from './modules/packages/packages.module';
 import { UsersModule } from './modules/users/users.module';
 import { RedisModule } from './redis/redis.module';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
@@ -37,6 +39,8 @@ import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
     AuthModule,
     UsersModule,
     ContactModule,
+    PackagesModule,
+    EventsModule,
   ],
   controllers: [HealthController],
   providers: [

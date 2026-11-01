@@ -17,7 +17,11 @@ export const unauthorized = (code: ErrorCode = 'auth.unauthorized') =>
   new AppException(code, HttpStatus.UNAUTHORIZED);
 export const forbidden = (code: ErrorCode = 'common.forbidden') =>
   new AppException(code, HttpStatus.FORBIDDEN);
+export const notFound = (code: ErrorCode = 'common.not_found') =>
+  new AppException(code, HttpStatus.NOT_FOUND);
 export const conflict = (code: ErrorCode) =>
   new AppException(code, HttpStatus.CONFLICT);
+export const unprocessable = (code: ErrorCode) =>
+  new AppException(code, HttpStatus.UNPROCESSABLE_ENTITY);
 export const tooManyRequests = (code: ErrorCode = 'common.too_many_requests') =>
   new AppException(code, HttpStatus.TOO_MANY_REQUESTS);
