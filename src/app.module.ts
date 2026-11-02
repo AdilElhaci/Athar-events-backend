@@ -2,6 +2,7 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import type Redis from 'ioredis';
@@ -14,6 +15,7 @@ import { ContactModule } from './modules/contact/contact.module';
 import { REDIS } from './modules/auth/services/rate-limit.service';
 import { EventsModule } from './modules/events/events.module';
 import { PackagesModule } from './modules/packages/packages.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { UsersModule } from './modules/users/users.module';
 import { RedisModule } from './redis/redis.module';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
@@ -28,6 +30,7 @@ import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
     }),
     TypeOrmModule.forRootAsync({ useFactory: () => buildDataSourceOptions() }),
     RedisModule,
+    ScheduleModule.forRoot(),
     // Global per-IP limit: 100 requests per 60 s (ttl is in milliseconds — W1 fixed), stored in Redis
     // so limits are shared across instances. Auth routes set tighter limits with @Throttle.
     ThrottlerModule.forRootAsync({
@@ -42,6 +45,7 @@ import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
     ContactModule,
     PackagesModule,
     EventsModule,
+    PaymentsModule,
     ArticlesModule,
   ],
   controllers: [HealthController],

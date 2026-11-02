@@ -46,8 +46,8 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | GET | `/events` | owner | `?page&limit&search&status` | `Paginated<IEventListItem>` | Own events only |
 | GET | `/events/:id` | owner | — | `IEvent` (with state dimensions, `nextAction`, `editable`, `packageEditable`) | 404 if not owned |
 | PATCH | `/events/:id` | owner | editable fields | `IEvent` | 409 `events.locked` once approved/scheduled; 409 `events.package_locked` once checkout started; changing `startsAt` resets the admission window |
-| POST | `/events/:id/checkout` | owner | — | `{ paymentUrl, paymentAttemptId }` | Reuses an open attempt; 409 `events.already_paid` |
-| GET | `/events/:id/payment-status` | owner | `?paymentAttemptId` | `{ paymentStatus, attemptStatus }` | Triggers a server-side Moyasar fetch if `PENDING` (rate-limited); used by `/payment/return` |
+| POST | `/events/:id/checkout` | owner | — | `{ paymentUrl, paymentAttemptId }` | **Implemented** (T-P2-07). 200; CSRF; 10/min. Reuses an open attempt with more than 15 minutes left; 409 `events.already_paid`, 409 `events.closed`, 422 `events.starts_in_past`, 503 `payments.unavailable` |
+| GET | `/events/:id/payment-status` | owner | `?paymentAttemptId` | `{ paymentStatus, attemptStatus }` | **Implemented** (T-P2-08). Fetches from Moyasar at most every 5 s per pending attempt; 60/min; a Moyasar outage returns the stored state. `attemptStatus` is null before any checkout. Used by `/dashboard/events/:id/payment` |
 | GET | `/events/:id/summary` | owner | — | `IEventSummary` | Polled every 10 s |
 | GET | `/events/:id/guests` | owner | `?page&limit&search&rsvp&admitted` | `Paginated<IOwnerGuest>` | Phones masked `+9665•••••123` |
 | GET | `/events/:id/invitation` | owner | — | `{ content: IInvitationContent, approvable: boolean }` | Latest version + rendered preview |
@@ -110,8 +110,8 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 
 | Method | Path | Verification | Behaviour |
 | --- | --- | --- | --- |
-| POST | `/payments/moyasar/webhook` | `secret_token` in body, timing-safe compare, 401 on failure | Dedupe by payment id + type; fetch the payment from Moyasar; apply idempotently; 200 quickly |
-| POST | `/payments/moyasar/invoice-callback` | None from Moyasar → **re-fetch** the invoice by id before acting | Same apply path |
+| POST | `/payments/moyasar/webhook` | `secret_token` in body, timing-safe compare, 401 on failure **Implemented** (T-P2-08). Dedupe by payment id + type in `webhook_receipts`; fetch the attempt's **invoice** by `data.invoice_id` from Moyasar; apply idempotently; 200 `{ outcome }`; 500 while Moyasar is unreachable so Moyasar retries; no throttle |
+| POST | `/payments/moyasar/invoice-callback` | None from Moyasar → **re-fetch** the invoice by id before acting | **Implemented.** Only the body's `id` is read, and only an id that belongs to one of our attempts is fetched; same apply path |
 | GET | `/whatsapp/webhook` | `hub.verify_token` | Returns `hub.challenge` |
 | POST | `/whatsapp/webhook` | `X-Hub-Signature-256` HMAC of the raw body with the app secret, 401 on failure | Persist receipts per message/status, enqueue apply job, return 200 |
 

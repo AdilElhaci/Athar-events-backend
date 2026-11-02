@@ -61,6 +61,9 @@ export const MESSAGES = {
   'events.locked': 'لا يمكن تعديل المناسبة بعد اعتماد الدعوة أو جدولتها.',
   'events.package_locked': 'لا يمكن تغيير الباقة بعد بدء الدفع.',
   'events.closed': 'لا يمكن تعديل مناسبة ملغاة أو منتهية.',
+  'events.already_paid': 'تم دفع هذه المناسبة مسبقاً.',
+  'payments.unavailable':
+    'تعذّر فتح صفحة الدفع الآن، حاول بعد قليل. لم يُخصم أي مبلغ.',
   'events.admission_window_invalid': 'بداية نافذة الدخول يجب أن تسبق نهايتها.',
   'user.phone_invalid':
     'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',

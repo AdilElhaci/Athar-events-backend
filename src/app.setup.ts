@@ -17,6 +17,7 @@ export function configureApp(app: NestExpressApplication): INestApplication {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use('/api/admin/articles', json({ limit: '512kb' })); // the only long-text payload
+  app.use('/api/payments/moyasar', json({ limit: '64kb' })); // provider payloads
   app.use(json({ limit: '16kb' })); // bounded bodies: auth payloads are tiny
   app.use(cookieParser());
   app.setGlobalPrefix('api');

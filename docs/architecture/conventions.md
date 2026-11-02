@@ -105,10 +105,9 @@ app/
 ├── layout.tsx                    <html lang="ar" dir="rtl">, IBM Plex Sans Arabic, ReduxProvider, Toaster
 ├── (Landing Page)/               page.tsx, contact/, privacy/, terms/
 ├── (Auth)/auth/                  login/, verify/
-├── (Dashboard)/dashboard/        layout.tsx (Sidebar + DashboardHeader), page.tsx, events/, packages/, users/, payments/, messages/
+├── (Dashboard)/dashboard/        layout.tsx (Sidebar + DashboardHeader), page.tsx, events/ ([id]/payment = SCR-12, verifies status from the API), packages/, users/, payments/, messages/
 ├── (Scanner)/scan/               page.tsx (event picker), [eventId]/page.tsx (full-screen scanner)
-├── (Guest)/i/[token]/            page.tsx (QR recovery)
-└── payment/return/               page.tsx (verifies status from the API)
+└── (Guest)/i/[token]/            page.tsx (QR recovery)
 components/
 ├── ui/                           shadcn primitives + project form elements (components/ui/form/*)
 ├── shared/                       DataTable, MainTitles, ReusableDialog, SummaryCard, StatusBadge, LastUpdated, …

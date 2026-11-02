@@ -23,5 +23,7 @@ export const conflict = (code: ErrorCode) =>
   new AppException(code, HttpStatus.CONFLICT);
 export const unprocessable = (code: ErrorCode) =>
   new AppException(code, HttpStatus.UNPROCESSABLE_ENTITY);
+export const serviceUnavailable = (code: ErrorCode) =>
+  new AppException(code, HttpStatus.SERVICE_UNAVAILABLE);
 export const tooManyRequests = (code: ErrorCode = 'common.too_many_requests') =>
   new AppException(code, HttpStatus.TOO_MANY_REQUESTS);

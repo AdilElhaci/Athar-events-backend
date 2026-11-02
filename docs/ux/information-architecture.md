@@ -25,7 +25,7 @@
                  /dashboard/articles                 SCR-29a articles · /new and /[id] SCR-29b form
                  /dashboard/activity                 SCR-28 admin action log
   both           /dashboard/profile                  SCR-05 name, email
-payment          /payment/return                     SCR-12 payment confirmation
+  owner          /dashboard/events/[id]/payment      SCR-12 payment confirmation (Moyasar success_url)
 (Scanner)        /scan                               SCR-30 choose event (owner)
                  /scan/[eventId]                     SCR-31 scanner · SCR-32 result states
 (Guest)          /i/[token]                          SCR-40 QR recovery page

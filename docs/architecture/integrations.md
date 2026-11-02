@@ -7,12 +7,12 @@
 | Item | Plan | Status |
 | --- | --- | --- |
 | Product | Hosted invoice (`POST /v1/invoices`) with `amount` (halalas), `currency=SAR`, `description`, `callback_url` (server), `success_url`/`back_url` (browser), `metadata.paymentAttemptId`, `metadata.eventId` | Pattern verified in the Athar code (`moyasar.service.ts`); invoice fields **to verify** against current Moyasar docs in P2 |
-| Webhook | `POST /api/payments/moyasar/webhook`; body carries `secret_token`; compare with `MOYASAR_WEBHOOK_SECRET` using `timingSafeEqual`; event types `payment_paid`, `payment_failed`, … | Secret-token model as in Athar; payload **to verify** in sandbox |
+| Webhook | `POST /api/payments/moyasar/webhook`; body carries `secret_token`; compare with `MOYASAR_WEBHOOK_SECRET` using `timingSafeEqual`; event types `payment_paid`, `payment_failed`, …; `data` is the payment, linked to our attempt by `data.invoice_id` | Envelope (`id`, `type`, `secret_token`, `live`, `data`) and retries (5 more over about 4 hours on non-2xx) **verified** in Moyasar's webhook reference, 2026-11-02; real delivery **to verify** in sandbox |
 | Invoice callback | `POST /api/payments/moyasar/invoice-callback`; unauthenticated by Moyasar, so the handler fetches `GET /v1/invoices/:id` before acting | Athar pattern |
 | Verification rule | Activate only when the fetched invoice/payment is `paid`, `amount` and `currency` equal the attempt, and `metadata.paymentAttemptId` matches | [D-10](../product/decisions.md) |
 | Reconciliation | Every 5 minutes: attempts `PENDING` older than 2 minutes and younger than 48 hours are fetched from Moyasar; also on `GET /events/:id/payment-status` | AC-05-4 |
 | Refunds | Manual in the Moyasar dashboard; admin marks the event refunded | Out of scope (quotation) |
-| Environment | `MOYASAR_SECRET_KEY`, `MOYASAR_PUBLISHABLE_KEY` (unused unless the embedded form is chosen), `MOYASAR_WEBHOOK_SECRET`, `MOYASAR_API_BASE_URL`, `MOYASAR_SUCCESS_URL`, `MOYASAR_BACK_URL` | Test and live keys are separate per environment |
+| Environment | `MOYASAR_SECRET_KEY` (unset → checkout 503), `MOYASAR_PUBLISHABLE_KEY` (unused unless the embedded form is chosen), `MOYASAR_WEBHOOK_SECRET` (unset → every webhook 401), `MOYASAR_API_BASE_URL`. Return, back and callback URLs are derived from `APP_ORIGIN` (`/dashboard/events/:id/payment`, `/dashboard/events/:id`, `/api/payments/moyasar/invoice-callback`; the callback is sent only for an `https` origin) | Implemented 2026-11-02. Test and live keys are separate per environment; an `sk_live_` key is refused outside production |
 | Client provides | Moyasar merchant account in the client's name, activated for live payments (external review, not counted in the schedule) | [OQ-07](../product/open-questions.md) |
 
 Fallback: Tap Payments only if Moyasar onboarding fails; Tap uses `hashstring` validation and would need its own ADR amendment.

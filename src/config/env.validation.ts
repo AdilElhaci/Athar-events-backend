@@ -129,6 +129,25 @@ export class EnvironmentVariables {
 
   @IsString()
   MAIL_FROM_NAME = 'أثر للمناسبات';
+
+  /** Unset: checkout answers 503 and nothing calls Moyasar. `sk_live_` is refused outside production. */
+  @IsOptional()
+  @IsString()
+  MOYASAR_SECRET_KEY?: string;
+
+  /** Unused while checkout is the hosted invoice; kept so the server env mirrors the dashboard. */
+  @IsOptional()
+  @IsString()
+  MOYASAR_PUBLISHABLE_KEY?: string;
+
+  /** Shared with the webhook registered in the Moyasar dashboard. Unset: every webhook answers 401. */
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  MOYASAR_WEBHOOK_SECRET?: string;
+
+  @IsUrl({ require_tld: false })
+  MOYASAR_API_BASE_URL = 'https://api.moyasar.com/v1';
 }
 
 export function validateEnv(
@@ -142,6 +161,11 @@ export function validateEnv(
     const names = errors.map((e) => e.property).join(', ');
     throw new Error(`Invalid environment configuration: ${names}`);
   }
+  if (
+    env.NODE_ENV !== NodeEnv.Production &&
+    env.MOYASAR_SECRET_KEY?.startsWith('sk_live_')
+  )
+    throw new Error('MOYASAR_SECRET_KEY must be a test key outside production');
   if (env.NODE_ENV === NodeEnv.Production) {
     if (!env.SMTP_HOST) throw new Error('SMTP_HOST is required in production');
     if (!env.COOKIE_SECURE)

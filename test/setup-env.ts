@@ -17,4 +17,5 @@ Object.assign(process.env, {
   COOKIE_SECURE: 'true',
   SMTP_HOST: '',
   MAIL_FROM: 'no-reply@example.com',
+  MOYASAR_WEBHOOK_SECRET: 'test-moyasar-webhook-secret-0123456789',
 });
