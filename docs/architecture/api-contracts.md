@@ -98,7 +98,7 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | DELETE | `/admin/contact-messages/:id` | — | `null` | Permanent; audited |
 | GET | `/admin/articles` | `?status&search&page&limit` | `Paginated<IAdminArticleListItem>` | Latest edit first; search matches the title literally |
 | GET | `/admin/articles/:id` | — | `IAdminArticle` | |
-| POST | `/admin/articles` | article fields | `IAdminArticle` | Audited; 409 `article.slug_taken`; 422 `article.incomplete` when published without every field |
+| POST | `/admin/articles` | article fields | `IAdminArticle` | Audited; 409 `article.slug_taken`; 422 `article.incomplete` when published without excerpt, reading time, cover, cover alt or a section (category and takeaway are optional) |
 | PATCH | `/admin/articles/:id` | article fields | `IAdminArticle` | Audited; same errors; `published_at` is set by the server on first publish |
 | DELETE | `/admin/articles/:id` | — | `null` | Permanent; removes the uploaded cover; audited |
 | POST | `/admin/articles/images` | multipart `file` | `{ url }` | JPEG, PNG or WebP by content, 2 MB at most (413 above it); not audited |

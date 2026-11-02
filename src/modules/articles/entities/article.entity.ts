@@ -25,7 +25,7 @@ export interface ArticleSection {
 @Index('IDX_articles_status_published_at', ['status', 'publishedAt'])
 @Check(
   'CHK_articles_published_complete',
-  `"status" <> 'PUBLISHED' OR ("published_at" IS NOT NULL AND "excerpt" IS NOT NULL AND "category" IS NOT NULL AND "reading_minutes" IS NOT NULL AND "cover_url" IS NOT NULL AND "cover_alt" IS NOT NULL AND "takeaway" IS NOT NULL AND jsonb_array_length("sections") > 0)`,
+  `"status" <> 'PUBLISHED' OR ("published_at" IS NOT NULL AND "excerpt" IS NOT NULL AND "reading_minutes" IS NOT NULL AND "cover_url" IS NOT NULL AND "cover_alt" IS NOT NULL AND jsonb_array_length("sections") > 0)`,
 )
 export class Article {
   @PrimaryGeneratedColumn('uuid')

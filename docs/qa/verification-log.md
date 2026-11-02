@@ -112,3 +112,13 @@ Uncommitted, not deployed. No real Moyasar key was used: the backend ran against
 - Real Chromium flow (Playwright, local API + Moyasar stand-in, 9 checks): wizard "ادفع الآن" opens the hosted page for 500.00 SAR; paying returns to SCR-12, which shows "تم الدفع بنجاح" and the overview moves to "أرسل قائمة ضيوفك"; leaving the hosted page unpaid shows the pending notice and the pay button reopens the same invoice; an expired invoice shows "لم يكتمل الدفع" and a new invoice; a payment never confirmed shows "سنؤكد الدفع قريباً" after 30 s. No horizontal overflow at 360.
 
 Not verified: the Moyasar sandbox itself (invoice fields, `expired_at` format, real webhook and callback deliveries, invoice status names other than `initiated`/`paid`/`expired`), the callback URL (sent only for an `https` origin), the 5-minute cron in a running container, the Docker image.
+
+## 2026-11-03 — Simpler article form (T-P2-12)
+
+Owner asked for five admin fields: title, cover, summary, sections, published.
+
+- Backend: `category` and `takeaway` removed from `REQUIRED_TO_PUBLISH` and from `CHK_articles_published_complete` (migration `RelaxArticlePublishCheck`, up/down/up on the local database). Articles e2e 16/16, including a new test that publishes without both fields. Typecheck and lint pass.
+- Frontend: typecheck, lint, Prettier pass.
+- Chromium via Playwright (local API and web): the new-article form shows only العنوان, صورة الغلاف, الملخص, عنوان القسم / نص القسم, منشور; publishing empty shows the field errors; a published article got slug `article-20261102-596d`, reading time 1, cover alt equal to the title, category null; the public page shows «دفتر أثر» without a category and no «خذها معك» box; editing kept the slug. Test article, its image and the temporary admin were deleted afterwards.
+
+Not verified: the five seeded guides after the change (their category and takeaway stay stored; the takeaway still shows, the category no longer does).

@@ -198,6 +198,18 @@ describe('Articles (e2e)', () => {
       expect(create.body.code).toBe('article.incomplete');
     });
 
+    it('publishes without a category or takeaway', async () => {
+      const {
+        category: _category,
+        takeaway: _takeaway,
+        ...basics
+      } = FULL_CONTENT;
+      await createDraft('basic-article', { ...basics, status: 'PUBLISHED' });
+      const res = await http().get('/api/articles/basic-article').expect(200);
+      expect(res.body.data.category).toBeNull();
+      expect(res.body.data.takeaway).toBeNull();
+    });
+
     it('enforces the published invariant in the database', async () => {
       await expect(
         db.query(

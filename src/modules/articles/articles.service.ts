@@ -26,13 +26,12 @@ import { Article, ArticleStatus } from './entities/article.entity';
 
 const SLUG_CONSTRAINT = 'UQ_articles_slug';
 
+/** Category and takeaway are optional extras; the admin form no longer asks for them. */
 const REQUIRED_TO_PUBLISH = [
   'excerpt',
-  'category',
   'readingMinutes',
   'coverUrl',
   'coverAlt',
-  'takeaway',
 ] as const;
 
 /** Clear error for the admin; `CHK_articles_published_complete` is the actual guarantee. */

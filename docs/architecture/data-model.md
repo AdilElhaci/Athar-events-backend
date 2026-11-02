@@ -219,16 +219,16 @@ Rows are deleted permanently. The client IP is not stored.
 | slug | varchar(120) | `UQ_articles_slug`; lowercase latin words and digits |
 | title | varchar(160) | |
 | excerpt | varchar(600) null | Summary: homepage card and article lead |
-| category | varchar(60) null | Free label, not a taxonomy |
+| category | varchar(60) null | Free label, not a taxonomy; optional, not shown since 2026-11-03 |
 | reading_minutes | int null | Entered by the admin, 1 to 120 |
 | cover_url | varchar(200) null | `/api/articles/images/:id`, or `/articles/*` in the web app's `public` folder; never another origin |
 | cover_alt | varchar(200) null | |
 | sections | jsonb default `[]` | `[{ heading, body }]`, 20 at most |
-| takeaway | varchar(400) null | «خذها معك» |
+| takeaway | varchar(400) null | «خذها معك»; optional, the box is hidden when null |
 | status | enum `articles_status_enum` | `DRAFT`, `PUBLISHED`; default `DRAFT`; `IDX_articles_status_published_at` |
 | published_at | timestamptz null | Set by the server on first publish; kept when unpublished |
 
-`CHK_articles_published_complete`: a `PUBLISHED` row has `published_at`, every nullable field above and at least one section. Rows are deleted permanently.
+`CHK_articles_published_complete`: a `PUBLISHED` row has `published_at`, `excerpt`, `reading_minutes`, `cover_url`, `cover_alt` and at least one section (`category` and `takeaway` stay optional, migration `RelaxArticlePublishCheck`). Rows are deleted permanently.
 
 ### article_images
 
