@@ -71,3 +71,33 @@ Uncommitted, not deployed. Ran on local Postgres, Redis and Mailpit with a produ
 - No horizontal overflow at 320, 360, 768, 1024 on SCR-10, SCR-11, SCR-13.
 
 Not verified: states after payment (no path reaches them yet, covered by unit tests only), Docker image, production server. Not compared pixel by pixel with Figma; the wizard's selected package uses a ring where Figma has no selected state.
+
+## 2026-11-02 — Contact requests (T-P2-11)
+
+Uncommitted, not deployed. Ran on local Postgres and Redis with a scratch database, Redis index and ports (dropped afterwards), SMTP disabled.
+
+- Backend: typecheck, lint, format, build pass; unit 30/30; e2e 57/57 across all suites (7 new in `test/contact-messages.e2e-spec.ts`: storage and e-mail, honeypot and invalid input store nothing, 401/403 on every admin route, CSRF, validation, literal search and filters, read without undoing later statuses, audit without personal data, permanent delete).
+- Frontend: typecheck, lint, format, production build pass.
+- Real Chrome flow on a dev server: public form with a markup payload → sign-in → table, sidebar count → open message (marked read, count drops, payload shown as text and not run) → status change reaches the table → delete with confirmation, no refetch of the deleted row → search by 05… → status filter and empty state → emptying the last page returns to a page with rows. No console errors. No horizontal page overflow at 360.
+
+Not verified: the migration on the production server, the 60 s polling interval over real time, the load error states in the browser, real SMTP delivery of the unchanged e-mail. No axe run. The dev database is behind on migrations (`AddPackages` onward), so `pnpm migration:run` is needed before local use.
+
+## 2026-11-02 — Admin queue and events (T-P2-06)
+
+- Scope: AC-08-1, TC-ADM-01; `GET /admin/dashboard`, `GET /admin/events`, `GET`/`PATCH /admin/events/:id`; SCR-20, SCR-20a, event workspace details tab.
+- Backend: 11 new e2e tests in `test/admin-events.e2e-spec.ts` against real PostgreSQL and Redis, including every combination of the five state fields against the next-step logic (TC-ADM-01), access (401/403), correction audit, date moving the window, inverted window, no-op, approval reset, send times, closed events, CSRF.
+- Browser: Chromium against the local API with temporary seeded data, removed afterwards. Queue counters, overdue alert, task list, stage filter from a counter, search, correction with validation, owner overview, owner blocked from all events. No horizontal overflow at 1280, 768, 360 and 320 on the three screens; correction dialog measured at 320.
+- Defect found and fixed in the browser: the form sent every field, so rounding to the minute logged an untouched `startsAt`; it now sends changed fields only.
+- Not tested: the stale notice and the error states of SCR-20 in the browser; the production build was not run against a deployed server.
+
+## 2026-11-02 — Admin articles (T-P2-12)
+
+Uncommitted, not deployed. Ran on local Postgres and Redis with a scratch database (dropped afterwards), against the standalone production server, because `next start` never refreshes the homepage with `output: standalone`.
+
+- Backend: typecheck, lint, format, build pass; unit 30/30; e2e 68/68 across all suites. `test/articles.e2e-spec.ts` covers seeded content, 401/403 on every admin route, CSRF, the draft-to-delete journey, publish completeness including the database check, long bodies past the 16 KB limit, slug uniqueness and format, literal search, status filter, and cover type, size, origin and cleanup.
+- `migration:generate --check` reports nothing for `articles` or `article_images`.
+- Frontend: typecheck, lint, Prettier and production build pass.
+- Real Chrome flow (30 checks, then a separate mobile pass): seeded articles on the homepage and article page, owner gate, admin list, draft, field errors, refused quick publish, 2 MB limit, cover upload, publish, markup shown as text, search and filter, homepage update, unpublish, republish, delete with confirmation. No overflow at 320 and 375, no console errors.
+- Found and fixed in this flow: `fetch`'s data cache keeps only 200 responses, so a deleted or unpublished article stayed public indefinitely. `lib/articles.ts` now caches the result, including "not found", through `unstable_cache`; the flow confirms 404 after unpublish and delete.
+
+Not verified: the migration on the production server, the Docker image, real-device mobile, an axe run. `AddArticles` `down` was not run. A public change takes up to about a minute, and the first homepage request after a deploy can still show the build-time page, as with packages.

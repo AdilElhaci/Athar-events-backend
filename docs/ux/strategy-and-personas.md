@@ -71,7 +71,7 @@ Owner signs in on the door device the day before â†’ on the day opens `/scan` â†
 | --- | --- |
 | Owner unsure how to send the list | Persistent instruction card with reference code, template download and the client's contact ([OQ-04](../product/open-questions.md)) |
 | Invitation wording disputes | Explicit approval of the exact rendered version ([D-15](../product/decisions.md)) |
-| Shared owner session at the door | Dedicated scan mode, no navigation, sign-out of this device and of all devices |
+| Shared owner session at the door | Dedicated scan mode, no navigation, sign-out of this device; changing the password ends every session |
 | Email code not received at the venue | Sign in on door devices the day before (event-day checklist) |
 | Admin overload from messy lists | Template, preview and row reasons; skip invalid rows rather than blocking |
 | Count confusion | Tooltips with definitions; "extras used / available / cap" instead of "remaining" |

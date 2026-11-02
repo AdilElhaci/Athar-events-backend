@@ -18,6 +18,7 @@ const STATUS_CODES: Partial<Record<number, ErrorCode>> = {
   403: 'common.forbidden',
   404: 'common.not_found',
   409: 'common.conflict',
+  413: 'common.payload_too_large',
   429: 'common.too_many_requests',
 };
 

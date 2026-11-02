@@ -107,7 +107,7 @@ Coverage is not a target number; every test case below must exist before its tas
 | TC-QR-05 | Admin, another owner, or no session cannot use the scan endpoint ([D-08](../product/decisions.md)) |
 | TC-QR-06 | Outside the admission window → `WINDOW_CLOSED` |
 | TC-QR-07 | Public invitation endpoint is rate-limited, `no-store`, and never changes admission |
-| TC-QR-08 | "Sign out of this device" ends the scan session; "sign out of all devices" ends all |
+| TC-QR-08 | "Sign out of this device" ends the scan session; changing the password ends all sessions |
 | TC-QR-09 | Scanner works on iPhone Safari and Android Chrome (camera permission, rear camera, low light) |
 
 ### Admin
@@ -117,7 +117,7 @@ Coverage is not a target number; every test case below must exist before its tas
 | TC-ADM-01 | Queue stages match the next-step logic |
 | TC-ADM-02 | Every admin write creates an `admin_actions` row without personal data in `summary` |
 | TC-ADM-03 | Resolve `UNKNOWN` message: mark sent / mark failed / resend creates a new intent |
-| TC-ADM-04 | Create admin; owner cannot reach admin pages (404) or endpoints (403) |
+| TC-ADM-04 | Owner cannot reach admin pages (404) or endpoints (403) |
 | TC-ADM-05 | Suspend/reactivate user; cannot suspend self |
 | TC-ADM-06 | Mark refunded cancels the event, campaign and QR codes |
 

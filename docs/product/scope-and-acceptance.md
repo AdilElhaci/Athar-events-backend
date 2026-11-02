@@ -102,7 +102,7 @@ Quotation 08: built on a ready-made admin panel; receive guest lists from users 
 - AC-08-2 An admin adds guests manually or imports the [fixed `.xlsx` template](../specs/SP-03-guests-and-import.md#excel-template); the preview shows valid rows, invalid rows with reasons and duplicates before anything is saved.
 - AC-08-3 An admin schedules, pauses and resumes a campaign; scheduling requires payment, an approved invitation and a ready list.
 - AC-08-4 An admin sends replacements; the screen shows extras used, available and cap.
-- AC-08-5 An admin manages packages (AC-04-1), users (list, suspend, reactivate, create admin) and views payments and the per-message log with filters.
+- AC-08-5 An admin manages packages (AC-04-1), users (list, suspend, reactivate; administrators are created only by the server CLI, [D-33](decisions.md#d-33)) and views payments and the per-message log with filters.
 - AC-08-6 Every admin write action is recorded in the admin action log with actor, time, target and summary.
 
 ### FR-09 Launch — [operations](../architecture/operations.md)

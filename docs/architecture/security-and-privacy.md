@@ -41,7 +41,7 @@ Enforcement is on the backend only: `JwtAuthGuard` → `UserTypeGuard` → owner
 | Personal data in logs | Allowlisted log fields; no bodies, phones, names, codes, tokens or provider payloads | TC-SEC-03 |
 | Open CORS, default secrets | Explicit `CORS_ORIGINS`; config validation refuses to boot without required secrets in production | TC-SEC-02 |
 | Brute force on API | Global throttle 100 requests/min per user or IP (`ttl: 60_000`) | TC-SEC-01 |
-| Door device left signed in | Scan mode is a separate full-screen route with a visible "sign out of this device" action; the owner can also "sign out of all devices" (`POST /auth/logout-all`), which revokes every refresh chain | TC-QR-08 |
+| Door device left signed in | Scan mode is a separate full-screen route with a visible "sign out of this device" action; the owner can also change the password, which revokes every refresh chain (the UI has no "sign out of all devices" button; `POST /auth/logout-all` remains API-only) | TC-QR-08 |
 
 ## Personal data inventory
 
@@ -55,6 +55,7 @@ Enforcement is on the backend only: `JwtAuthGuard` → `UserTypeGuard` → owner
 | Imported spreadsheets | Memory only; parsed rows in `guest_import_rows` | Admins | Rows deleted 7 days after apply |
 | OTP challenges | `otp_challenges` | System only | Deleted after 30 days |
 | Payment references, card brand/last4 | `payment_attempts` | Owner (own), admins | As required for accounting (client decision) |
+| Contact-form name, phone, message | `contact_messages`, team inbox e-mail | Admins | Until an admin deletes the row ([D-35](../product/decisions.md)) |
 
 ## Processors
 

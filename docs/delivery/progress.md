@@ -43,16 +43,18 @@ Rules: one row per task; `done` requires evidence (commit hash, test run, verifi
 
 | ID | Phase | Deliverable | Status | Deps | Acceptance | Evidence / blocker |
 | --- | --- | --- | --- | --- | --- | --- |
-| T-P2-01 | P2 | Packages: entity, public list, admin CRUD, SCR-21; landing reads real packages | done | T-P1-04 | AC-04-1, AC-01-2 | 2026-11-01, uncommitted, not deployed; see [verification log](../qa/verification-log.md#2026-11-01--packages-t-p2-01): migration `AddPackages`, `GET /packages`, `GET/POST/PATCH /admin/packages` (audited in `admin_actions`; deactivate, never delete), SCR-21 at `/dashboard/packages`. **To go live:** deploy, set `WEB_API_URL=http://api:4000/api` on the server, then the admin enters the real packages (none are seeded: no approved prices exist). 2026-11-02: a package chosen on the landing page now carries through sign-in or registration into SCR-11 (AC-01-3). |
+| T-P2-01 | P2 | Packages: entity, public list, admin CRUD, SCR-21; landing reads real packages | done | T-P1-04 | AC-04-1, AC-01-2 | 2026-11-01, on `main`, not deployed; see [verification log](../qa/verification-log.md#2026-11-01--packages-t-p2-01): migration `AddPackages`, `GET /packages`, `GET/POST/PATCH /admin/packages` (audited in `admin_actions`; deactivate, never delete), SCR-21 at `/dashboard/packages`. **To go live:** deploy, set `WEB_API_URL=http://api:4000/api` on the server, then the admin enters the real packages (none are seeded: no approved prices exist). 2026-11-02: a package chosen on the landing page now carries through sign-in or registration into SCR-11 (AC-01-3). |
 | T-P2-02 | P2 | Moyasar client, config, fakes and sandbox fixtures | planned | T-P0-02 | integrations.md | |
-| T-P2-03 | P2 | Events backend: create/edit, package snapshot, reference code, state fields, ownership, admission window defaults | done | T-P2-01 | AC-03-1, AC-03-7, AC-04-2 | 2026-11-02, uncommitted, not deployed; see [verification log](../qa/verification-log.md#2026-11-02--owner-events-t-p2-03-to-t-p2-05): migration `AddEvents`, `GET/POST /events`, `GET/PATCH /events/:id`. `approved_content_id` waits for `invitation_contents` (T-P3-04). |
-| T-P2-04 | P2 | Owner SCR-10 my events, SCR-11 create wizard | done | T-P2-03 | AC-03-1 | 2026-11-02, uncommitted, not deployed; same log entry. The review step ends with "أنشئ المناسبة"; "ادفع الآن" replaces it with checkout (T-P2-07). |
-| T-P2-05 | P2 | Owner SCR-13 overview: timeline, next-step card, state handling (counts placeholder) | in-progress | T-P2-03, T-P1-09 | AC-03-2, AC-03-3 | 2026-11-02, uncommitted, not deployed: overview, timeline, next step for every state, capacity tiles, edit dialog. **Open:** pay button (T-P2-07); guest-list template download (T-P3-02, OQ-04, OQ-05). Only the unpaid state was reached in the browser: later states need payment and admin tasks. |
-| T-P2-06 | P2 | Admin queue SCR-20, all events SCR-20a, event workspace details tab | planned | T-P2-03 | AC-08-1 | |
+| T-P2-03 | P2 | Events backend: create/edit, package snapshot, reference code, state fields, ownership, admission window defaults | done | T-P2-01 | AC-03-1, AC-03-7, AC-04-2 | 2026-11-02, on `main`, not deployed; see [verification log](../qa/verification-log.md#2026-11-02--owner-events-t-p2-03-to-t-p2-05): migration `AddEvents`, `GET/POST /events`, `GET/PATCH /events/:id`. `approved_content_id` waits for `invitation_contents` (T-P3-04). |
+| T-P2-04 | P2 | Owner SCR-10 my events, SCR-11 create wizard | done | T-P2-03 | AC-03-1 | 2026-11-02, on `main`, not deployed; same log entry. The review step ends with "أنشئ المناسبة"; "ادفع الآن" replaces it with checkout (T-P2-07). |
+| T-P2-05 | P2 | Owner SCR-13 overview: timeline, next-step card, state handling (counts placeholder) | in-progress | T-P2-03, T-P1-09 | AC-03-2, AC-03-3 | 2026-11-02, on `main`, not deployed: overview, timeline, next step for every state, capacity tiles, edit dialog. **Open:** pay button (T-P2-07); guest-list template download (T-P3-02, OQ-04, OQ-05). Only the unpaid state was reached in the browser: later states need payment and admin tasks. |
+| T-P2-06 | P2 | Admin queue SCR-20, all events SCR-20a, event workspace details tab | done | T-P2-03 | AC-08-1 | 2026-11-02, on `main`, not deployed; see [verification log](../qa/verification-log.md#2026-11-02--admin-queue-and-events-t-p2-06): `GET /admin/dashboard`, `GET /admin/events`, `GET`/`PATCH /admin/events/:id` (audited correction with reason, admission window), SCR-20, SCR-20a, details tab. **Follow-ups belong to their tasks:** alerts for unknown sends and payments to reconcile (T-P3-07, T-P2-08); `sending` stays empty until sending exists; the assignee column in Figma has no data model and was left out. |
 | T-P2-07 | P2 | Checkout, payment attempts, single apply-payment path | planned | T-P2-02, T-P2-03 | AC-05-1, AC-05-2 | |
 | T-P2-08 | P2 | Webhook, invoice callback, reconciliation job, payment-status endpoint, SCR-12 | planned | T-P2-07 | AC-05-3, AC-05-4 | |
 | T-P2-09 | P2 | Admin payments SCR-26, mark refunded, `admin_actions` + SCR-28 | planned | T-P2-07 | AC-05-5, AC-08-5, AC-08-6 | |
 | T-P2-10 | P2 | Demo milestone on staging; verification log entry | planned | T-P2-01…09 | Demo milestone | |
+| T-P2-11 | P2 | Admin contact requests SCR-29: stored messages, list, search, status, delete, sidebar count | done | T-P1-08, D-34 | D-34 | 2026-11-02, on `main`, not deployed; [verification log](../qa/verification-log.md#2026-11-02--contact-requests-t-p2-11). Retention D-35; privacy draft updated. **Open:** client approval of the privacy wording. |
+| T-P2-12 | P2 | Admin articles SCR-29a, SCR-29b: CRUD, cover upload, public pages from the API, five launch guides seeded | done | T-P1-08, D-36 | D-36 | 2026-11-02, on `main`, not deployed; [verification log](../qa/verification-log.md#2026-11-02--admin-articles-t-p2-12). Also fixed a pre-existing type error in `packages.service.ts`. **Open:** no public page lists every article, so anything older than the newest five needs a direct link. |
 
 ## P3 — Guests, approval, scheduling, sending, RSVP (W3)
 
@@ -64,7 +66,7 @@ Rules: one row per task; `done` requires evidence (commit hash, test run, verifi
 | T-P3-04 | P3 | Invitation content versions, owner approval SCR-15, admin content panel | planned | T-P3-03, OQ-02 | AC-03-5 | |
 | T-P3-05 | P3 | BullMQ queues, scheduler role, sweepers, stale recovery, heartbeat | planned | T-P1-01 | D-09 | |
 | T-P3-06 | P3 | Schedule/pause/resume/cancel endpoints, preconditions, SCR-23 | planned | T-P3-04, T-P3-05 | AC-08-3 | |
-| T-P3-07 | P3 | Sending engine: intents, claim, outcomes, chunking, event-start cutoff, `UNKNOWN` handling | planned | T-P3-05, T-P1-10 | AC-06-1, AC-06-4, AC-06-5 | |
+| T-P3-07 | P3 | Sending engine: intents, claim, outcomes, chunking, event-start cutoff, `UNKNOWN` handling | planned | T-P3-05, T-P1-10 | AC-06-1, AC-06-4, AC-06-5 | Must recheck `approval_status = APPROVED` at send time: an admin correction (T-P2-06) can reset approval on a `SCHEDULED` campaign without unscheduling it. |
 | T-P3-08 | P3 | Webhook apply: monotonic statuses, button replies, RSVP, inbound records | planned | T-P3-07 | AC-06-2, AC-06-6 | |
 | T-P3-09 | P3 | QR issuance on Accept; QR and QR-template intents | planned | T-P3-08 | AC-06-3, AC-07-1 | |
 
@@ -78,7 +80,7 @@ Rules: one row per task; `done` requires evidence (commit hash, test run, verifi
 | T-P4-04 | P4 | Scanner PWA SCR-30/31/32, guest page SCR-40, real-device tests | planned | T-P4-03 | AC-07-5, AC-07-6 | |
 | T-P4-05 | P4 | Summary endpoint, owner counts with polling and `LastUpdated` | planned | T-P3-08 | AC-03-6 | |
 | T-P4-06 | P4 | Message log SCR-25, resolve `UNKNOWN`/`FAILED`, QR reissue | planned | T-P3-07 | AC-06-4, AC-08-5 | |
-| T-P4-07 | P4 | Users admin SCR-27 (create admin, suspend, reactivate) | planned | T-P1-04 | AC-08-5 | |
+| T-P4-07 | P4 | Users admin SCR-27 (suspend, reactivate) | planned | T-P1-04 | AC-08-5 | 2026-11-02: "create admin" removed by D-33; administrators are created only by the server CLI (D-28) |
 | T-P4-08 | P4 | Venue rehearsal on staging (two phones, full journey); verification log entry | planned | T-P4-01…07 | Phase DoD | |
 
 ## P5 — Hardening and launch (W5)
@@ -98,6 +100,8 @@ Rules: one row per task; `done` requires evidence (commit hash, test run, verifi
 
 **Session footer** (overwrite each session)
 
-- Last session: 2026-11-02 — events backend (T-P2-03), owner SCR-10, SCR-11, SCR-13 (T-P2-04, T-P2-05), chosen package carried through sign-in. Everything since 2026-11-01 is uncommitted and not deployed.
+- Last session: 2026-11-02 — events backend (T-P2-03), owner SCR-10, SCR-11, SCR-13 (T-P2-04, T-P2-05), chosen package carried through sign-in; "sign out of all devices" button removed from the dashboard shell for owners and admins at the owner's request (`POST /auth/logout-all` kept, API-only; changing the password still ends every session). Everything since 2026-11-01 is on `main` and not deployed. Plan change D-33: no admin creation in the dashboard (AC-08-5, SCR-27, T-P4-07, TC-ADM-04, API contract updated). T-P2-06 done (admin queue, all events, details tab).
 - Next action: commit and deploy; then T-P2-02/07/08 (Moyasar checkout and activation), which needs the client's Moyasar test keys (T-P0-02) for a real sandbox run.
+- 2026-11-02, T-P2-11: admin contact requests SCR-29 built and verified (D-34), on `main`, not deployed. Run `AddContactMessages` with the release. Retention decided (D-35), privacy draft updated.
+- 2026-11-02, T-P2-12: admin articles built and verified (D-36), on `main`, not deployed. Run `AddArticles` with the release; it must run before `AddContactMessages`, which the timestamps already ensure. The local dev database already has both migrations.
 - Working-state concerns: hosting budget and post-support operator still open (OQ-06). Off-host backups and monitoring not set up (P5). Local stack: `docker compose up -d` in the backend; API on :4000, web on :3000.

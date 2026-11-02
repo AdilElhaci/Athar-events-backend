@@ -8,6 +8,7 @@ import type Redis from 'ioredis';
 import { validateEnv } from './config/env.validation';
 import { buildDataSourceOptions } from './database/data-source';
 import { HealthController } from './health.controller';
+import { ArticlesModule } from './modules/articles/articles.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ContactModule } from './modules/contact/contact.module';
 import { REDIS } from './modules/auth/services/rate-limit.service';
@@ -41,6 +42,7 @@ import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
     ContactModule,
     PackagesModule,
     EventsModule,
+    ArticlesModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -67,7 +67,7 @@ export class PackagesService {
       if (!fields.length) return current;
 
       const updated = await manager.save(
-        manager.merge(Package, current, changes),
+        manager.merge<Package>(Package, current, changes),
       );
       await manager.insert(AdminAction, {
         actorUserId,

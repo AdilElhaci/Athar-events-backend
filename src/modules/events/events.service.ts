@@ -27,6 +27,19 @@ const admissionWindow = (startsAt: Date) => ({
   admissionClosesAt: new Date(startsAt.getTime() + ADMISSION_CLOSES_AFTER_MS),
 });
 
+export const assertFutureStart = (startsAt: Date) => {
+  if (startsAt.getTime() <= Date.now())
+    throw unprocessable('events.starts_in_past');
+};
+
+export const assertSendTime = (sendAt: Date | null, startsAt: Date) => {
+  if (!sendAt) return;
+  if (sendAt.getTime() >= startsAt.getTime())
+    throw unprocessable('events.send_after_start');
+  if (sendAt.getTime() <= Date.now())
+    throw unprocessable('events.send_in_past');
+};
+
 const snapshotOf = (pkg: Package) => ({
   packageId: pkg.id,
   packageName: pkg.name,
@@ -74,8 +87,8 @@ export class EventsService {
     const requestedSendAt = dto.requestedSendAt
       ? new Date(dto.requestedSendAt)
       : null;
-    this.assertFutureStart(startsAt);
-    this.assertSendTime(requestedSendAt, startsAt);
+    assertFutureStart(startsAt);
+    assertSendTime(requestedSendAt, startsAt);
 
     return this.dataSource.transaction(async (manager) => {
       const pkg = await this.activePackage(manager, dto.packageId);
@@ -104,7 +117,7 @@ export class EventsService {
 
       const startsAt = dto.startsAt ? new Date(dto.startsAt) : event.startsAt;
       const startChanged = startsAt.getTime() !== event.startsAt.getTime();
-      if (startChanged) this.assertFutureStart(startsAt);
+      if (startChanged) assertFutureStart(startsAt);
 
       const requestedSendAt =
         dto.requestedSendAt === undefined
@@ -116,7 +129,7 @@ export class EventsService {
         startChanged ||
         requestedSendAt?.getTime() !== event.requestedSendAt?.getTime()
       )
-        this.assertSendTime(requestedSendAt, startsAt);
+        assertSendTime(requestedSendAt, startsAt);
 
       if (dto.packageId && dto.packageId !== event.packageId) {
         if (!isPackageEditable(event)) throw conflict('events.package_locked');
@@ -143,18 +156,5 @@ export class EventsService {
     const pkg = await manager.findOneBy(Package, { id, isActive: true });
     if (!pkg) throw unprocessable('events.package_inactive');
     return pkg;
-  }
-
-  private assertFutureStart(startsAt: Date) {
-    if (startsAt.getTime() <= Date.now())
-      throw unprocessable('events.starts_in_past');
-  }
-
-  private assertSendTime(sendAt: Date | null, startsAt: Date) {
-    if (!sendAt) return;
-    if (sendAt.getTime() >= startsAt.getTime())
-      throw unprocessable('events.send_after_start');
-    if (sendAt.getTime() <= Date.now())
-      throw unprocessable('events.send_in_past');
   }
 }

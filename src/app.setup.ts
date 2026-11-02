@@ -16,6 +16,7 @@ export function configureApp(app: NestExpressApplication): INestApplication {
   app.set('trust proxy', config.get('TRUST_PROXY_HOPS', { infer: true }));
   app.disable('x-powered-by');
   app.use(helmet());
+  app.use('/api/admin/articles', json({ limit: '512kb' })); // the only long-text payload
   app.use(json({ limit: '16kb' })); // bounded bodies: auth payloads are tiny
   app.use(cookieParser());
   app.setGlobalPrefix('api');

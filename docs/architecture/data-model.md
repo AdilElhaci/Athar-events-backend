@@ -1,6 +1,6 @@
 # Data model
 
-**Status: proposed schema; identity, `packages` and `events` are migrated.** PostgreSQL, TypeORM entities, conventions in [conventions.md](conventions.md#data-access-and-invariants). Every table has `id uuid PK`, `created_at timestamptz`, and `updated_at timestamptz` where rows change; these are omitted below. Columns are written in snake_case as stored.
+**Status: proposed schema; identity, `packages`, `events`, `articles` and `article_images` are migrated.** PostgreSQL, TypeORM entities, conventions in [conventions.md](conventions.md#data-access-and-invariants). Every table has `id uuid PK`, `created_at timestamptz`, and `updated_at timestamptz` where rows change; these are omitted below. Columns are written in snake_case as stored.
 
 ## Entity map
 
@@ -13,6 +13,7 @@ users ─1:N─ events ─1:N─ guests ─1:N─ whatsapp_messages
   ├─1:N─ refresh_tokens
 otp_challenges (by email)   packages (catalogue; snapshotted into events)
 whatsapp_inbound   webhook_receipts   admin_actions
+contact_messages (public form; no link to users)
 ```
 
 ## Identity
@@ -186,6 +187,49 @@ Minimal record of inbound button replies; free text is never stored.
 
 `provider` (`MOYASAR`, `META`), `dedupe_key` (provider event/payment id, or Meta status id + status), `UQ (provider, dedupe_key)`, `received_at`, `processed_at`, `outcome`, `error_code`. Raw payloads are not stored.
 
+## Contact
+
+### contact_messages
+
+Messages from the public contact form ([D-34](../product/decisions.md)).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| name | varchar(120) | |
+| phone | varchar(20) | `9665XXXXXXXX` |
+| subject | text | Up to 2000 characters by the DTO; never edited |
+| status | enum `contact_message_status` | `NEW`, `READ`, `REPLIED`, `CLOSED`; default `NEW`; `IDX_contact_messages_status` |
+| created_at, updated_at | timestamptz | `IDX_contact_messages_created_at` |
+
+Rows are deleted permanently. The client IP is not stored.
+
+## Content
+
+### articles
+
+«دفتر أثر» guides managed by admins ([D-36](../product/decisions.md)). Plain text only; stored HTML is never rendered.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| slug | varchar(120) | `UQ_articles_slug`; lowercase latin words and digits |
+| title | varchar(160) | |
+| excerpt | varchar(600) null | Summary: homepage card and article lead |
+| category | varchar(60) null | Free label, not a taxonomy |
+| reading_minutes | int null | Entered by the admin, 1 to 120 |
+| cover_url | varchar(200) null | `/api/articles/images/:id`, or `/articles/*` in the web app's `public` folder; never another origin |
+| cover_alt | varchar(200) null | |
+| sections | jsonb default `[]` | `[{ heading, body }]`, 20 at most |
+| takeaway | varchar(400) null | «خذها معك» |
+| status | enum `articles_status_enum` | `DRAFT`, `PUBLISHED`; default `DRAFT`; `IDX_articles_status_published_at` |
+| published_at | timestamptz null | Set by the server on first publish; kept when unpublished |
+
+`CHK_articles_published_complete`: a `PUBLISHED` row has `published_at`, every nullable field above and at least one section. Rows are deleted permanently.
+
+### article_images
+
+Uploaded covers: `data` bytea, `content_type` varchar(20). Stored here so they follow blue/green deploys and database backups. A cover is removed when replaced or when its article is deleted; an upload never saved to an article stays as an unreferenced row.
+
 ## Audit
 
 ### admin_actions
@@ -198,7 +242,7 @@ Append-only (no update/delete path in code).
 | action | varchar(60) | e.g. `package.update`, `guests.import_apply`, `campaign.schedule`, `replacement.send`, `qr.reissue`, `message.resolve`, `user.suspend`, `event.refund_mark` |
 | target_type, target_id | varchar, uuid | |
 | event_id | uuid null | For per-event filtering |
-| summary | jsonb | Counts and changed field names; no names or phones |
+| summary | jsonb | Counts, changed field names and the admin's reason (free text, the form asks not to include guest names or numbers); no names or phones written by code |
 | ip_address | inet null | |
 
 Check-ins are attributed through `guests.checked_in_by_user_id`; failed scans are not stored in the MVP.

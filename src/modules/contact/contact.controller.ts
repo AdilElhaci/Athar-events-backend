@@ -25,7 +25,8 @@ export class ContactController {
   @UseGuards(CsrfGuard)
   @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
   @ApiOperation({
-    summary: 'Public contact form: e-mails the message to the team inbox.',
+    summary:
+      'Public contact form: stores the message and e-mails the team inbox.',
   })
   async send(@Body() dto: ContactMessageDto, @Req() req: Request) {
     await this.contact.submit(dto, req.ip ?? null);

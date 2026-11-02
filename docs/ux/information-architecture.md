@@ -7,6 +7,7 @@
 ```text
 (Landing Page)   /                      SCR-01 landing (hero, how it works, packages, FAQ, contact)
                  /privacy  /terms       SCR-06, SCR-07 static pages
+                 /articles/[slug]       ART-01… published article (from the API)
 (Auth)           /auth/login            SCR-02 email step
                  /auth/verify           SCR-03 code step
                  /auth/profile          SCR-04 first-time name (only when requiresProfile)
@@ -20,8 +21,10 @@
                  /dashboard/packages                 SCR-21
                  /dashboard/payments                 SCR-26
                  /dashboard/users                    SCR-27
+                 /dashboard/contact-messages         SCR-29 contact requests
+                 /dashboard/articles                 SCR-29a articles · /new and /[id] SCR-29b form
                  /dashboard/activity                 SCR-28 admin action log
-  both           /dashboard/profile                  SCR-05 name, email, sign out of all devices
+  both           /dashboard/profile                  SCR-05 name, email
 payment          /payment/return                     SCR-12 payment confirmation
 (Scanner)        /scan                               SCR-30 choose event (owner)
                  /scan/[eventId]                     SCR-31 scanner · SCR-32 result states
@@ -47,7 +50,7 @@ The header shows the breadcrumb, the user menu (profile, sign out) and, for owne
 | SCR-02 | Sign in — email | Public | Email field | Send code | Sending, throttled (countdown) |
 | SCR-03 | Sign in — code | Public | 6-digit input, resend countdown, change email | Verify | Invalid, expired, locked, resend available |
 | SCR-04 | Complete profile | Any | Name | Save | — |
-| SCR-05 | Profile | Any | Name, email, phone; sign out of all devices | Save | — |
+| SCR-05 | Profile | Any | Name, email, phone | Save | — |
 | SCR-10 | My events | Owner | Event cards: name, date, next-step badge | New event | Empty (first event CTA), loading skeleton, error |
 | SCR-11 | Create event | Owner | Stepper: package → details → review | Pay | Validation, package inactive, redirecting to payment |
 | SCR-12 | Payment return | Owner | Verifying → paid / still pending / failed | Go to event / retry payment | Pending > 30 s explains delayed confirmation |
@@ -63,8 +66,11 @@ The header shows the breadcrumb, the user menu (profile, sign out) and, for owne
 | SCR-24 | Replacements | Admin | Extras cap/used/available, eligible declines, reserve list | Send N replacements / choose guests | No declines, margin exhausted, no reserves |
 | SCR-25 | Message log | Admin | `DataTable`: guest, kind, state, delivery, time, error code; filter `UNKNOWN`/`FAILED` | Resolve | — |
 | SCR-26 | Payments | Admin | `DataTable`: event, owner, amount, status, Moyasar ids | Reconcile / mark refunded | — |
-| SCR-27 | Users | Admin | `DataTable`: name, email, type, status | Create admin / suspend / reactivate | — |
+| SCR-27 | Users | Admin | `DataTable`: name, email, type, status | Suspend / reactivate | — |
 | SCR-28 | Activity log | Admin | `DataTable`: time, actor, action, target | — | — |
+| SCR-29a | Articles | Admin | `DataTable`: title, link, status, dates; search and status filter | Add / publish / delete (confirmation) | Loading, empty, no matches, error |
+| SCR-29b | Article form | Admin | Basics, cover upload, ordered sections, «خذها معك», published flag | Save | A draft needs a title and link; publishing needs every field |
+| SCR-29 | Contact requests | Admin | `DataTable`: name, mobile, subject, status, date; search and status filter; details dialog; sidebar count of new messages | Read / set status / delete (with confirmation) | Empty, no matches, loading, load error in table and dialog |
 | SCR-30 | Scan — choose event | Owner | Today's / upcoming events with window times | Start scanning | No event with an open window; not signed in → sign in |
 | SCR-31 | Scanner | Owner | Full-screen camera, admitted/accepted counter, manual entry, torch, sign out of device | Scan | Camera permission prompt / denied, no connection, window closed |
 | SCR-32 | Scan result | Owner | Large result card: icon + title + guest name/time + reason | Continue | ADMITTED, ALREADY_ADMITTED, NOT_ACCEPTED, INVALID, WRONG_EVENT, WINDOW_CLOSED |

@@ -32,6 +32,10 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | Method | Path | Auth | Response `data` | Notes |
 | --- | --- | --- | --- | --- |
 | GET | `/packages` | public | `IPackage[]` (active, sorted) | Landing and event creation |
+| GET | `/articles` | public | `Paginated<IArticleCard>` | Published only, newest first ([D-36](../product/decisions.md)) |
+| GET | `/articles/:slug` | public | `IArticle` | 404 for drafts and unknown slugs |
+| GET | `/articles/images/:id` | public | Image bytes | No JSON envelope; `Cache-Control: immutable` |
+| POST | `/contact` | public (CSRF header) | `null` | `{ name, phone, subject, website? }`; honeypot, 5 per IP per hour; stored and e-mailed ([D-34](../product/decisions.md)) |
 | GET | `/public/invitations/:token` | public (bearer token in path) | `{ guestName, eventName, startsAt, venueName, venueMapUrl, status: 'VALID' \| 'ADMITTED' \| 'REVOKED' \| 'CLOSED' }` | `Cache-Control: no-store`; never checks in; 404 for unknown tokens; rate-limited |
 
 ## Owner — events — [SP-02](../specs/SP-02-packages-events-payments.md)
@@ -64,10 +68,10 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 
 | Method | Path | Request | Response `data` | Notes / codes |
 | --- | --- | --- | --- | --- |
-| GET | `/admin/dashboard` | — | queue counts per stage, alerts (unknown sends, payments to reconcile, overdue) | |
-| GET | `/admin/events` | `?stage&page&limit&search` | `Paginated<IAdminEventListItem>` | `stage ∈ awaiting_payment, awaiting_list, awaiting_approval, scheduled, sending, needs_attention, done` |
-| GET | `/admin/events/:id` | — | `IAdminEvent` | Includes owner contact |
-| PATCH | `/admin/events/:id` | correction fields, `reason` | `IAdminEvent` | Audited; admission window editable |
+| GET | `/admin/dashboard` | — | `{ stages: Record<stage, number>, alerts: { overdueCampaigns } }` | **Implemented** (T-P2-06). `overdueCampaigns` follows the [operations alert](operations.md). Alerts for unknown sends and payments to reconcile are added with their tables (T-P3-07, T-P2-08) |
+| GET | `/admin/events` | `?stage&needsAction&page&limit&search` | `Paginated<IAdminEventListItem>` | **Implemented.** `stage ∈ awaiting_payment, awaiting_list, awaiting_approval, scheduled, sending, needs_attention, done`. `needsAction=true` keeps `awaiting_list`, `awaiting_approval`, `needs_attention`, soonest first (SCR-20); otherwise newest date first. Search matches event name, reference or owner name. `IAdminEventListItem = { id, referenceCode, name, startsAt, ownerName, packageName, stage, nextAction }` |
+| GET | `/admin/events/:id` | — | `IAdminEvent` | **Implemented.** `IEvent` plus `stage` and `owner { id, name, email, phone }` |
+| PATCH | `/admin/events/:id` | changed fields of `name, startsAt, venueName, venueMapUrl, requestedSendAt, admissionOpensAt, admissionClosesAt`, plus `reason` (3–300) | `IAdminEvent` | **Implemented.** Audited as `event.corrected`; a corrected date moves the window with it; changing name, date or venue moves an approved invitation back to `AWAITING_OWNER` until sending starts ([D-15](../product/decisions.md)). 409 `events.closed`; 422 `events.send_after_start`, `events.send_in_past`, `events.starts_in_past`, `events.admission_window_invalid` |
 | POST | `/admin/events/:id/list-status` | `{ status: 'IN_PROGRESS' \| 'READY' }` | `IAdminEvent` | `READY` requires ≥ 1 initial guest |
 | POST | `/admin/events/:id/invitation` | `{ templateName, variables }` | `IInvitationContent` | New version; sets approval `AWAITING_OWNER` |
 | POST | `/admin/events/:id/schedule` | `{ sendAt }` | `IAdminEvent` | 422 `campaign.not_paid`, `campaign.not_approved`, `campaign.list_not_ready`, `campaign.send_after_event` |
@@ -85,8 +89,19 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | POST | `/admin/messages/:messageId/resolve` | `{ resolution: 'MARK_SENT' \| 'MARK_FAILED' \| 'RESEND', reason }` | `IMessage` | Only for `UNKNOWN`/`FAILED` |
 | GET / POST / PATCH | `/admin/packages`, `/admin/packages/:id` | package fields | `IPackage` | `GET` is paginated and includes inactive packages. No delete: deactivate |
 | GET | `/admin/users` | `?type&status&search&page&limit` | `Paginated<IAdminUser>` | |
-| POST | `/admin/users` | `{ email, name }` | `IAdminUser` | Creates a `PLATFORM_ADMIN` |
 | PATCH | `/admin/users/:id/status` | `{ status }` | `IAdminUser` | Cannot suspend yourself |
+| GET | `/admin/contact-messages` | `?status&search&page&limit` | `Paginated<IContactMessage>` | Newest first; search matches name, subject and phone (05… or +966…) literally |
+| GET | `/admin/contact-messages/new-count` | — | `{ count }` | Sidebar indicator, polled every 60 s |
+| GET | `/admin/contact-messages/:id` | — | `IContactMessage` | No side effect |
+| POST | `/admin/contact-messages/:id/read` | — | `IContactMessage` | `NEW` → `READ` only; any other status is returned unchanged |
+| POST | `/admin/contact-messages/:id/status` | `{ status: 'NEW' \| 'READ' \| 'REPLIED' \| 'CLOSED' }` | `IContactMessage` | Audited |
+| DELETE | `/admin/contact-messages/:id` | — | `null` | Permanent; audited |
+| GET | `/admin/articles` | `?status&search&page&limit` | `Paginated<IAdminArticleListItem>` | Latest edit first; search matches the title literally |
+| GET | `/admin/articles/:id` | — | `IAdminArticle` | |
+| POST | `/admin/articles` | article fields | `IAdminArticle` | Audited; 409 `article.slug_taken`; 422 `article.incomplete` when published without every field |
+| PATCH | `/admin/articles/:id` | article fields | `IAdminArticle` | Audited; same errors; `published_at` is set by the server on first publish |
+| DELETE | `/admin/articles/:id` | — | `null` | Permanent; removes the uploaded cover; audited |
+| POST | `/admin/articles/images` | multipart `file` | `{ url }` | JPEG, PNG or WebP by content, 2 MB at most (413 above it); not audited |
 | GET | `/admin/payments` | `?status&page&limit&search` | `Paginated<IPayment>` | |
 | POST | `/admin/payments/:id/reconcile` | — | `IPayment` | Forces a Moyasar fetch |
 | GET | `/admin/actions` | `?eventId&actorId&action&page&limit` | `Paginated<IAdminAction>` | |

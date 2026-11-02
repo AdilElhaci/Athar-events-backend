@@ -2,10 +2,13 @@ import 'reflect-metadata';
 import { join } from 'node:path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AdminAction } from '../modules/admin-actions/admin-action.entity';
+import { ArticleImage } from '../modules/articles/entities/article-image.entity';
+import { Article } from '../modules/articles/entities/article.entity';
 import { AuthToken } from '../modules/auth/entities/auth-token.entity';
 import { EmailChallenge } from '../modules/auth/entities/email-challenge.entity';
 import { RefreshToken } from '../modules/auth/entities/refresh-token.entity';
 import { Session } from '../modules/auth/entities/session.entity';
+import { ContactMessage } from '../modules/contact/entities/contact-message.entity';
 import { Event } from '../modules/events/entities/event.entity';
 import { Package } from '../modules/packages/entities/package.entity';
 import { User } from '../modules/users/entities/user.entity';
@@ -19,6 +22,9 @@ export const ENTITIES = [
   AdminAction,
   Package,
   Event,
+  Article,
+  ArticleImage,
+  ContactMessage,
 ];
 
 /** Shared by the Nest app, the migration CLI and the admin CLI. `synchronize` is always off. */

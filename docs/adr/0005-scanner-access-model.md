@@ -27,7 +27,7 @@ The quotation requires a mobile-browser scanning page that prevents duplicate sc
 ## Consequences
 
 - No scanner-pass entity, strategy or management UI — less to build.
-- Door staff who scan must use the owner's signed-in session on that device, which exposes the owner's dashboard on the device. Mitigations: a dedicated full-screen scan mode, a prominent "sign out of this device", "sign out of all devices", and short-lived access tokens. This is accepted by the owner.
+- Door staff who scan must use the owner's signed-in session on that device, which exposes the owner's dashboard on the device. Mitigations: a dedicated full-screen scan mode, a prominent "sign out of this device", changing the password to end every session, and short-lived access tokens. This is accepted by the owner.
 - Signing in at the venue depends on email delivery; the [event-day readiness checklist](../architecture/operations.md#event-day-readiness-per-event) asks the owner to sign in on door devices the day before.
 - Attribution is per owner account, not per staff member.
 
