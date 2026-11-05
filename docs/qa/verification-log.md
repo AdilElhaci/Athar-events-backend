@@ -122,3 +122,16 @@ Owner asked for five admin fields: title, cover, summary, sections, published.
 - Chromium via Playwright (local API and web): the new-article form shows only العنوان, صورة الغلاف, الملخص, عنوان القسم / نص القسم, منشور; publishing empty shows the field errors; a published article got slug `article-20261102-596d`, reading time 1, cover alt equal to the title, category null; the public page shows «دفتر أثر» without a category and no «خذها معك» box; editing kept the slug. Test article, its image and the temporary admin were deleted afterwards.
 
 Not verified: the five seeded guides after the change (their category and takeaway stay stored; the takeaway still shows, the category no longer does).
+
+## 2026-11-05 — Invitation calculator (T-P1-08)
+
+Landing packages section replaced by the calculator (Figma 255:5090; landing 255:7187 desktop, 255:7246 mobile, 255:10952 at 320 px). Frontend only; no API or schema change.
+
+- Rules (`lib/invitation-calculator.ts`): only the base allowance counts (the reserve is separate); smallest fitting package, cheaper on a tie; a chosen package is kept while it fits and dropped once it does not; above the largest allowance the summary offers contact and no price. Prices are integer halalas from the API and are never computed, only displayed; the event snapshots the package price on the server, and existing e2e tests reject a client `priceHalalas`.
+- No VAT, discount or surcharge rule exists in the code, the API or the decisions; the page states the price per event as charged at payment and makes no tax claim. The Figma note «تفاصيل الضريبة تُؤكَّد قبل الدفع» was not used because nothing confirms tax before payment.
+- Unit (Node test runner, 7 tests): boundaries 1, 99, 100, 101, 249, 250, 251, 499, 500, 501; reserve not counted; choice fallback; Arabic-Indic, Persian, Western digits and grouping; empty, zero, negative, fractions, text, too long.
+- Chromium via Playwright against a local API with three temporary packages (100+10 / 490, 250+25 / 990, 500+50 / 1,790 SAR), 44 checks pass: the same boundaries in the UI, disabled packages with «لا تستوعب العدد», larger choice kept then dropped, digits, invalid states with `aria-invalid`, presets and «أكثر من 500 دعوة», keyboard focus, one polite announcement after typing settles, CTA link `next=/dashboard/events/new?package=…&invitations=180`, the register link keeping it, sign-in landing on the wizard with the package preselected, «لَمّة» disabled for 180, and a too-small package in an edited link replaced by the smallest fit with a notice.
+- Server-rendered HTML contains the title, package names, prices and the CTA link before hydration.
+- Widths 1440, 1024, 768, 390, 360, 320: no horizontal scroll; the WhatsApp button does not cover the CTA. Typecheck, lint, Prettier and production build pass. Test packages and the test owner were deleted afterwards.
+
+Not verified: a full new registration (OTP) through to the wizard (only the preserved `next` on the register link); screen reader output itself (the live region text was checked, not spoken).
