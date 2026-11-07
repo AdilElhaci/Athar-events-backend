@@ -175,6 +175,8 @@ export class AdminEventsService {
           approvalStatus: approvalReset
             ? EventApprovalStatus.AWAITING_OWNER
             : event.approvalStatus,
+          // The approved text named the old details: a new version is needed (D-15).
+          approvedContentId: approvalReset ? null : event.approvedContentId,
         }),
       );
       await manager.insert(AdminAction, {

@@ -178,6 +178,10 @@ export class Event {
   })
   campaignStatus!: EventCampaignStatus;
 
+  /** The invitation version the owner approved (or an admin approved with a reason). */
+  @Column({ name: 'approved_content_id', type: 'uuid', nullable: true })
+  approvedContentId!: string | null;
+
   @Column({ name: 'send_at', type: 'timestamptz', nullable: true })
   sendAt!: Date | null;
 

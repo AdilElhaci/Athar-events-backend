@@ -2,6 +2,7 @@ import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -148,6 +149,18 @@ export class EnvironmentVariables {
 
   @IsUrl({ require_tld: false })
   MOYASAR_API_BASE_URL = 'https://api.moyasar.com/v1';
+
+  /** Name of the Arabic invitation template submitted to Meta (ADR-0003). */
+  @IsString()
+  WHATSAPP_INVITATION_TEMPLATE = 'athar_invitation';
+
+  /**
+   * The template's state at Meta, set by hand until the template-status webhook exists (T-P1-10).
+   * Scheduling is refused unless it is APPROVED (SP-04, integrations.md).
+   */
+  @IsIn(['PENDING', 'APPROVED', 'REJECTED'])
+  WHATSAPP_INVITATION_TEMPLATE_STATUS: 'PENDING' | 'APPROVED' | 'REJECTED' =
+    'PENDING';
 }
 
 export function validateEnv(

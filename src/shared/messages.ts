@@ -92,6 +92,27 @@ export const MESSAGES = {
   'imports.row.kind_invalid': 'النوع يجب أن يكون «أساسي» أو «احتياطي».',
   'imports.row.note_too_long': 'الملاحظة أطول من 200 حرف.',
   'imports.row.formula': 'الخلية تحتوي على صيغة، أدخل القيمة نصاً.',
+  'invitation.version_created':
+    'تم حفظ نسخة الدعوة وإرسالها لصاحب المناسبة للاعتماد.',
+  'invitation.approved': 'تم اعتماد الدعوة.',
+  'invitation.overridden': 'تم اعتماد الدعوة من الإدارة وتسجيل السبب.',
+  'invitation.missing': 'لم تُجهَّز الدعوة بعد.',
+  'invitation.version_outdated':
+    'تغيّرت الدعوة بعد فتح الصفحة. راجع النسخة الأحدث ثم اعتمدها.',
+  'invitation.locked':
+    'لا يمكن تعديل الدعوة بعد جدولة الإرسال. ألغِ الجدولة أولاً.',
+  'invitation.variable_invalid':
+    'النص لا يقبل أسطراً جديدة أو مسافات متتالية، ويجب أن يكون بين 2 و120 حرفاً.',
+  'campaign.scheduled': 'تمت جدولة الإرسال.',
+  'campaign.unscheduled': 'أُلغيت الجدولة.',
+  'campaign.not_paid': 'لم تُدفع المناسبة بعد.',
+  'campaign.list_not_ready': 'اعتمد قائمة الضيوف أولاً.',
+  'campaign.not_approved': 'الدعوة غير معتمدة بعد.',
+  'campaign.template_not_approved':
+    'قالب الدعوة لم يعتمد من واتساب (Meta) بعد، فلا يمكن الجدولة.',
+  'campaign.send_after_event': 'موعد الإرسال يجب أن يسبق موعد المناسبة.',
+  'campaign.already_started': 'بدأ الإرسال أو انتهى، فلا يمكن تغيير الجدولة.',
+  'campaign.not_scheduled': 'المناسبة غير مجدولة.',
   'user.phone_invalid':
     'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',
 } as const;

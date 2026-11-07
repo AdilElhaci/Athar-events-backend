@@ -15,6 +15,7 @@ import { ContactModule } from './modules/contact/contact.module';
 import { REDIS } from './modules/auth/services/rate-limit.service';
 import { EventsModule } from './modules/events/events.module';
 import { GuestsModule } from './modules/guests/guests.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 import { PackagesModule } from './modules/packages/packages.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { UsersModule } from './modules/users/users.module';
@@ -47,6 +48,7 @@ import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
     PackagesModule,
     EventsModule,
     GuestsModule,
+    InvitationsModule,
     PaymentsModule,
     ArticlesModule,
   ],
