@@ -7,8 +7,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { withMessage } from '../../shared/interceptors/response.interceptor';
 import { buildMeta, Paginated } from '../../shared/pagination';
@@ -17,6 +19,7 @@ import { CsrfGuard } from '../auth/guards/csrf.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequireUserType, UserTypeGuard } from '../auth/guards/user-type.guard';
 import type { AuthenticatedUser } from '../auth/types/auth.types';
+import { buildGuestTemplate } from '../guests/utils/guest-sheet';
 import { UserType } from '../users/entities/user.entity';
 import {
   CreateEventDto,
@@ -58,6 +61,26 @@ export class EventsController {
   ) {
     const created = await this.events.create(user.id, dto);
     return withMessage(toEventView(created), 'event.created');
+  }
+
+  /** Declared before `:id` so the path is not read as an event id. Admins may download it too. */
+  @Get('guest-list-template')
+  @RequireUserType(UserType.OWNER, UserType.PLATFORM_ADMIN)
+  @ApiOperation({ summary: 'The fixed guest-list template (.xlsx).' })
+  async guestListTemplate(@Res() res: Response): Promise<void> {
+    const file = await buildGuestTemplate();
+    res
+      .status(200)
+      .setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      )
+      .setHeader(
+        'Content-Disposition',
+        `attachment; filename="athar-guest-list.xlsx"; filename*=UTF-8''${encodeURIComponent('قائمة-الضيوف-أثر.xlsx')}`,
+      )
+      .setHeader('Cache-Control', 'no-store')
+      .send(file);
   }
 
   @Get(':id')

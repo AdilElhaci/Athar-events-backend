@@ -10,6 +10,11 @@ import { RefreshToken } from '../modules/auth/entities/refresh-token.entity';
 import { Session } from '../modules/auth/entities/session.entity';
 import { ContactMessage } from '../modules/contact/entities/contact-message.entity';
 import { Event } from '../modules/events/entities/event.entity';
+import {
+  GuestImport,
+  GuestImportRow,
+} from '../modules/guests/entities/guest-import.entity';
+import { Guest } from '../modules/guests/entities/guest.entity';
 import { Package } from '../modules/packages/entities/package.entity';
 import { PaymentAttempt } from '../modules/payments/entities/payment-attempt.entity';
 import { WebhookReceipt } from '../modules/payments/entities/webhook-receipt.entity';
@@ -29,6 +34,9 @@ export const ENTITIES = [
   ContactMessage,
   PaymentAttempt,
   WebhookReceipt,
+  Guest,
+  GuestImport,
+  GuestImportRow,
 ];
 
 /** Shared by the Nest app, the migration CLI and the admin CLI. `synchronize` is always off. */

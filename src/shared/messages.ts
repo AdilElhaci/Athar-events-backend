@@ -65,6 +65,33 @@ export const MESSAGES = {
   'payments.unavailable':
     'تعذّر فتح صفحة الدفع الآن، حاول بعد قليل. لم يُخصم أي مبلغ.',
   'events.admission_window_invalid': 'بداية نافذة الدخول يجب أن تسبق نهايتها.',
+  'guest.created': 'تمت إضافة الضيف.',
+  'guest.updated': 'تم حفظ بيانات الضيف.',
+  'guest.deleted': 'تم حذف الضيف.',
+  'guests.phone_duplicate': 'هذا الرقم مضاف مسبقاً لضيف آخر في المناسبة.',
+  'guests.allowance_exceeded':
+    'اكتمل عدد الضيوف الأساسيين في الباقة، أضفه كضيف احتياطي أو احذف ضيفاً.',
+  'guests.reserve_exceeded': 'اكتمل عدد الضيوف الاحتياطيين المسموح في الباقة.',
+  'guests.locked_after_allocation':
+    'لا يمكن حذف الضيف أو تغيير رقمه بعد تخصيص دعوته.',
+  'guests.event_unpaid': 'لا يمكن إدخال الضيوف قبل إتمام دفع المناسبة.',
+  'guests.list_locked': 'لا يمكن تعديل القائمة بعد جدولة الإرسال أو بدئه.',
+  'guests.ready_requires_guest':
+    'أضف ضيفاً أساسياً واحداً على الأقل قبل اعتماد القائمة.',
+  'event.list_status_updated': 'تم تحديث حالة القائمة.',
+  'imports.previewed': 'تمت قراءة الملف، راجع النتيجة قبل الاعتماد.',
+  'imports.applied': 'تمت إضافة الضيوف من الملف.',
+  'imports.unreadable': 'تعذّرت قراءة الملف. ارفع ملف Excel بصيغة xlsx.',
+  'imports.missing_columns':
+    'الملف لا يحتوي على عمودي الاسم والجوال في الصف الأول. استخدم القالب المعتمد.',
+  'imports.too_many_rows': 'الملف يحتوي على أكثر من 2,000 صف.',
+  'imports.expired': 'انتهت صلاحية المعاينة، ارفع الملف من جديد.',
+  'imports.row.name_invalid': 'الاسم مفقود أو قصير جداً أو أطول من 120 حرفاً.',
+  'imports.row.phone_missing': 'رقم الجوال مفقود.',
+  'imports.row.phone_invalid': 'رقم الجوال ليس رقماً سعودياً صحيحاً.',
+  'imports.row.kind_invalid': 'النوع يجب أن يكون «أساسي» أو «احتياطي».',
+  'imports.row.note_too_long': 'الملاحظة أطول من 200 حرف.',
+  'imports.row.formula': 'الخلية تحتوي على صيغة، أدخل القيمة نصاً.',
   'user.phone_invalid':
     'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',
 } as const;
