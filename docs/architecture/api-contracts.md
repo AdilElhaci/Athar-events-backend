@@ -49,10 +49,10 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | POST | `/events/:id/checkout` | owner | — | `{ paymentUrl, paymentAttemptId }` | **Implemented** (T-P2-07). 200; CSRF; 10/min. Reuses an open attempt with more than 15 minutes left; 409 `events.already_paid`, 409 `events.closed`, 422 `events.starts_in_past`, 503 `payments.unavailable` |
 | GET | `/events/:id/payment-status` | owner | `?paymentAttemptId` | `{ paymentStatus, attemptStatus }` | **Implemented** (T-P2-08). Fetches from Moyasar at most every 5 s per pending attempt; 60/min; a Moyasar outage returns the stored state. `attemptStatus` is null before any checkout. Used by `/dashboard/events/:id/payment` |
 | GET | `/events/:id/summary` | owner | — | `IEventSummary` | Polled every 10 s |
-| GET | `/events/:id/guests` | owner | `?page&limit&search&rsvp&admitted` | `Paginated<IOwnerGuest>` | Phones masked `+9665•••••123` |
+| GET | `/events/:id/guests` | owner | `?page&limit&search&kind&rsvp&admitted` | `Paginated<IOwnerGuest> & { counts }` | **Implemented.** Phones masked `+9665•••••123`; search by name only; 404 unless owned |
 | GET | `/events/:id/invitation` | owner | — | `{ content: IInvitationContent, approvable: boolean }` | Latest version + rendered preview |
 | POST | `/events/:id/invitation/approve` | owner | `{ contentId, contentHash }` | `IInvitationContent` | 409 `invitation.version_outdated` if hash differs |
-| GET | `/events/guest-list-template` | any | — | `.xlsx` file | The fixed template ([SP-03](../specs/SP-03-guests-and-import.md#excel-template)) |
+| GET | `/events/guest-list-template` | owner, admin | — | `.xlsx` file | **Implemented.** The fixed template ([SP-03](../specs/SP-03-guests-and-import.md#excel-template)); `Cache-Control: no-store` |
 
 `IEventSummary = { invited, delivered, read, accepted, declined, noReply, extras: { cap, used, available }, admitted, updatedAt }` — definitions in [SP-04](../specs/SP-04-whatsapp-campaigns-rsvp-replacements.md#counts).
 
@@ -72,17 +72,17 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | GET | `/admin/events` | `?stage&needsAction&page&limit&search` | `Paginated<IAdminEventListItem>` | **Implemented.** `stage ∈ awaiting_payment, awaiting_list, awaiting_approval, scheduled, sending, needs_attention, done`. `needsAction=true` keeps `awaiting_list`, `awaiting_approval`, `needs_attention`, soonest first (SCR-20); otherwise newest date first. Search matches event name, reference or owner name. `IAdminEventListItem = { id, referenceCode, name, startsAt, ownerName, packageName, stage, nextAction }` |
 | GET | `/admin/events/:id` | — | `IAdminEvent` | **Implemented.** `IEvent` plus `stage` and `owner { id, name, email, phone }` |
 | PATCH | `/admin/events/:id` | changed fields of `name, startsAt, venueName, venueMapUrl, requestedSendAt, admissionOpensAt, admissionClosesAt`, plus `reason` (3–300) | `IAdminEvent` | **Implemented.** Audited as `event.corrected`; a corrected date moves the window with it; changing name, date or venue moves an approved invitation back to `AWAITING_OWNER` until sending starts ([D-15](../product/decisions.md)). 409 `events.closed`; 422 `events.send_after_start`, `events.send_in_past`, `events.starts_in_past`, `events.admission_window_invalid` |
-| POST | `/admin/events/:id/list-status` | `{ status: 'IN_PROGRESS' \| 'READY' }` | `IAdminEvent` | `READY` requires ≥ 1 initial guest |
+| POST | `/admin/events/:id/list-status` | `{ status: 'IN_PROGRESS' \| 'READY' }` | `IAdminEvent` | **Implemented.** `READY` requires ≥ 1 initial guest (422 `guests.ready_requires_guest`); back to `IN_PROGRESS` refused after approval (409 `guests.list_locked`); audited `event.list_status` |
 | POST | `/admin/events/:id/invitation` | `{ templateName, variables }` | `IInvitationContent` | New version; sets approval `AWAITING_OWNER` |
 | POST | `/admin/events/:id/schedule` | `{ sendAt }` | `IAdminEvent` | 422 `campaign.not_paid`, `campaign.not_approved`, `campaign.list_not_ready`, `campaign.send_after_event` |
 | POST | `/admin/events/:id/pause` / `/resume` / `/cancel-campaign` | `{ reason? }` | `IAdminEvent` | Each increments `schedule_version` |
 | POST | `/admin/events/:id/mark-refunded` | `{ reason }` | `IAdminEvent` | Cancels event; revokes QR codes ([OQ-16](../product/open-questions.md)) |
-| GET | `/admin/events/:id/guests` | `?page&limit&search&kind&rsvp&delivery` | `Paginated<IAdminGuest>` | Full phone visible to admins |
-| POST | `/admin/events/:id/guests` | `{ name, phone, kind, note? }` | `IAdminGuest` | 409 `guests.phone_duplicate`, 422 `guests.allowance_exceeded` |
-| PATCH / DELETE | `/admin/events/:id/guests/:guestId` | fields | `IAdminGuest` / `{}` | 409 `guests.locked_after_allocation` |
-| POST | `/admin/events/:id/guest-imports` | multipart `file` (.xlsx ≤ 2 MB) | `IGuestImportPreview` | Parses in memory; 400 `imports.unreadable`, `imports.missing_columns`, `imports.too_many_rows` |
-| GET | `/admin/events/:id/guest-imports/:importId/rows` | `?result&page&limit` | `Paginated<IImportRow>` | |
-| POST | `/admin/events/:id/guest-imports/:importId/apply` | — | `{ created, skipped }` | Only `VALID` rows; 409 `imports.expired`; idempotent |
+| GET | `/admin/events/:id/guests` | `?page&limit&search&kind&rsvp` | `Paginated<IAdminGuest> & { counts: { initial, reserve, allowance, extraMargin } }` | **Implemented.** Full phone; search by name or phone digits. `delivery` filter arrives with sending (P3/P4) |
+| POST | `/admin/events/:id/guests` | `{ name, phone, kind, note? }` | `IAdminGuest` | **Implemented.** 409 `guests.phone_duplicate`, 422 `guests.allowance_exceeded` / `guests.reserve_exceeded` / `guests.event_unpaid` / `imports.row.*`; 409 `guests.list_locked` once sending is scheduled |
+| PATCH / DELETE | `/admin/events/:id/guests/:guestId` | fields | `IAdminGuest` / `null` | **Implemented.** 409 `guests.locked_after_allocation`; delete is soft and frees the number |
+| POST | `/admin/events/:id/guest-imports` | multipart `file` (.xlsx ≤ 2 MB) | `IGuestImport` (`counts`, `previewExpiresAt`) | **Implemented.** Parses in memory; 400 `imports.unreadable`, `imports.missing_columns`, `imports.too_many_rows`; 413 above 2 MB |
+| GET | `/admin/events/:id/guest-imports/:importId/rows` | `?result&page&limit` | `Paginated<IImportRow>` | **Implemented.** |
+| POST | `/admin/events/:id/guest-imports/:importId/apply` | — | `IGuestImport` with `counts.created`, `counts.skipped` | **Implemented.** Only `VALID` rows that still fit (re-checked under the event lock); 409 `imports.expired`; idempotent; audited `guests.import_apply` |
 | POST | `/admin/events/:id/replacements` | `{ count }` or `{ guestIds: string[] }` | `{ allocated: IAdminGuest[], extras }` | 422 `replacements.no_declines_available`, `replacements.margin_exhausted`, `replacements.no_reserves` |
 | POST | `/admin/guests/:guestId/qr/reissue` | `{ reason }` | `IAdminGuest` | Revokes the old QR, sends a new one by template |
 | GET | `/admin/events/:id/messages` | `?state&delivery&kind&page&limit` | `Paginated<IMessage>` | Message log |
