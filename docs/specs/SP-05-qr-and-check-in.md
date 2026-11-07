@@ -21,7 +21,7 @@ Raw QR token (from the camera: either the full URL `https://<domain>/i/<token>` 
 
 ### Issue
 
-On acceptance: generate 32 random bytes → base64url token (43 chars); store `qr_token_hash = sha256(token)`, increment `qr_version`, set `qr_issued_at`; render a PNG of `https://<domain>/i/<token>` and send it ([SP-04](SP-04-whatsapp-campaigns-rsvp-replacements.md)). The token itself is never stored. Reissue (admin) and a later decline replace or clear the hash, which invalidates the old code.
+On acceptance: generate 32 random bytes → base64url token (43 chars); store `qr_token_hash = sha256(token)`, increment `qr_version`, set `qr_issued_at`; render a PNG of `https://<domain>/i/<token>` and send it ([SP-04](SP-04-whatsapp-campaigns-rsvp-replacements.md)). The token itself is never stored. Reissue (admin) and a later decline replace or clear the hash, which invalidates the old code. *Implementation (2026-11-08):* acceptance creates a `QR` intent for version `n`; the sender generates the token, writes its hash and sends the image in one step, so the token only exists in memory. A retry before delivery issues a fresh token for the same version; a decline or a newer version cancels it.
 
 ### Guest page
 

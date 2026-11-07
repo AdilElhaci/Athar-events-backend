@@ -163,6 +163,7 @@ Quota invariants (enforced in one transaction holding `SELECT … FOR UPDATE` on
 | kind | enum (`INVITATION`, `QR`, `QR_TEMPLATE`) | `QR` = in-window image; `QR_TEMPLATE` = approved template outside the window |
 | logical_key | varchar(120) | `UQ`; e.g. `invitation:<guestId>:<contentVersion>`, `qr:<guestId>:<qrVersion>` — a retry or duplicate job can never create a second intent |
 | schedule_version | int | Copied from the event; a mismatch at claim time cancels the intent |
+| qr_version | int null | QR intents: the guest `qr_version` this message issues (`CHECK`: required unless `INVITATION`) |
 | state | enum (`QUEUED`, `SENDING`, `SENT`, `FAILED`, `UNKNOWN`, `CANCELLED`) | Send attempt outcome |
 | delivery_status | enum (`NONE`, `SENT`, `DELIVERED`, `READ`, `FAILED`) | From Meta status webhooks; monotonic (`READ` never goes back to `DELIVERED`) |
 | provider_message_id | varchar(128) null | Partial `UQ` (`wamid…`) |
@@ -184,7 +185,7 @@ Minimal record of inbound button replies; free text is never stored.
 | type | enum (`BUTTON`, `TEXT`, `OTHER`) | |
 | button_payload | varchar(64) null | `RSVP_ACCEPT` / `RSVP_DECLINE` |
 | guest_id | uuid null | When matched |
-| outcome | enum (`APPLIED`, `UNMATCHED`, `LOCKED`, `DUPLICATE`, `AFTER_EVENT`) | |
+| outcome | enum (`APPLIED`, `UNMATCHED`, `LOCKED`, `DUPLICATE`, `AFTER_EVENT`, `IGNORED`) | `IGNORED`: not an RSVP button (free text, media, unknown payload); a redelivered message is skipped by the unique id, so `DUPLICATE` is not written |
 | received_at | timestamptz | Deleted with guest data per retention ([OQ-10](../product/open-questions.md)) |
 
 ### webhook_receipts

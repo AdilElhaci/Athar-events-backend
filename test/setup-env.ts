@@ -18,4 +18,8 @@ Object.assign(process.env, {
   SMTP_HOST: '',
   MAIL_FROM: 'no-reply@example.com',
   MOYASAR_WEBHOOK_SECRET: 'test-moyasar-webhook-secret-0123456789',
+  WHATSAPP_PHONE_NUMBER_ID: '100000000000001',
+  WHATSAPP_ACCESS_TOKEN: 'test-whatsapp-token',
+  WHATSAPP_APP_SECRET: 'test-whatsapp-app-secret-0123456789',
+  WHATSAPP_VERIFY_TOKEN: 'test-whatsapp-verify-token-0123',
 });

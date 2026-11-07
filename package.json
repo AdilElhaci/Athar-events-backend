@@ -26,7 +26,9 @@
     "migration:revert": "node -r dotenv/config node_modules/typeorm/cli-ts-node-commonjs.js migration:revert -d src/database/data-source.ts",
     "migration:run:prod": "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
     "admin:create": "node -r dotenv/config -r ts-node/register src/cli/create-admin.ts",
-    "admin:create:prod": "node dist/cli/create-admin.js"
+    "admin:create:prod": "node dist/cli/create-admin.js",
+    "whatsapp:tracer": "node -r dotenv/config -r ts-node/register src/cli/whatsapp-tracer.ts",
+    "whatsapp:tracer:prod": "node dist/cli/whatsapp-tracer.js"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
@@ -52,6 +54,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.23.1",
+    "qrcode": "1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^1.1.2"
@@ -68,6 +71,7 @@
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.2",
     "@types/passport-jwt": "^4.0.1",
+    "@types/qrcode": "1.5.5",
     "@types/supertest": "^7.0.0",
     "dotenv": "16.5.0",
     "eslint": "^9.18.0",

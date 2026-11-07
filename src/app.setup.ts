@@ -1,4 +1,9 @@
-import { ValidationPipe, type INestApplication } from '@nestjs/common';
+import {
+  ValidationPipe,
+  type INestApplication,
+  type RawBodyRequest,
+} from '@nestjs/common';
+import type { IncomingMessage } from 'node:http';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
@@ -18,6 +23,16 @@ export function configureApp(app: NestExpressApplication): INestApplication {
   app.use(helmet());
   app.use('/api/admin/articles', json({ limit: '512kb' })); // the only long-text payload
   app.use('/api/payments/moyasar', json({ limit: '64kb' })); // provider payloads
+  // Meta signs the exact bytes (X-Hub-Signature-256), so keep them; batches can be large.
+  app.use(
+    '/api/whatsapp/webhook',
+    json({
+      limit: '1mb',
+      verify: (req, _res, buf) => {
+        (req as RawBodyRequest<IncomingMessage>).rawBody = buf;
+      },
+    }),
+  );
   app.use(json({ limit: '16kb' })); // bounded bodies: auth payloads are tiny
   app.use(cookieParser());
   app.setGlobalPrefix('api');

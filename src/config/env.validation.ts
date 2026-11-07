@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   Min,
   MinLength,
@@ -149,6 +150,40 @@ export class EnvironmentVariables {
 
   @IsUrl({ require_tld: false })
   MOYASAR_API_BASE_URL = 'https://api.moyasar.com/v1';
+
+  /** Graph API version used for every Meta call. */
+  @Matches(/^v\d+\.\d+$/)
+  WHATSAPP_GRAPH_VERSION = 'v23.0';
+
+  @IsUrl({ require_tld: false })
+  WHATSAPP_GRAPH_BASE_URL = 'https://graph.facebook.com';
+
+  /** The sender's Phone Number ID (not the phone number). Unset: nothing is sent to Meta. */
+  @IsOptional()
+  @Matches(/^\d{5,30}$/)
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+
+  /** WhatsApp Business Account ID (template management). */
+  @IsOptional()
+  @Matches(/^\d{5,30}$/)
+  WHATSAPP_WABA_ID?: string;
+
+  /** System-user token with whatsapp_business_messaging and whatsapp_business_management. */
+  @IsOptional()
+  @IsString()
+  WHATSAPP_ACCESS_TOKEN?: string;
+
+  /** Meta app secret; signs every webhook (X-Hub-Signature-256). Unset: every webhook answers 401. */
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  WHATSAPP_APP_SECRET?: string;
+
+  /** Our own random string, entered as "Verify token" in the app's webhook settings. */
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  WHATSAPP_VERIFY_TOKEN?: string;
 
   /** Name of the Arabic invitation template submitted to Meta (ADR-0003). */
   @IsString()
