@@ -135,3 +135,28 @@ Landing packages section replaced by the calculator (Figma 255:5090; landing 255
 - Widths 1440, 1024, 768, 390, 360, 320: no horizontal scroll; the WhatsApp button does not cover the CTA. Typecheck, lint, Prettier and production build pass. Test packages and the test owner were deleted afterwards.
 
 Not verified: a full new registration (OTP) through to the wizard (only the preserved `next` on the register link); screen reader output itself (the live region text was checked, not spoken).
+
+## 2026-11-07 — Figma refresh (T-P1-08)
+
+Frontend only; no API, schema or auth change. Figma read through MCP: homepage 16:35 / 16:146, 293:1802, 262:988, 255:5090, gallery concepts 263:825/837/848, EditorialGuide 262:1029…1123, contact feedback 269:1794/1804, auth 28:2, owner 29:51 / 29:364 / 29:2305, privacy 36:546, 404 36:650.
+
+- Hero title: sampled `clip-path` in Chromium: line 1 uncovers first, line 2 from ~0.8 s, both complete by ~1.5 s; hero height and CTA position identical before and after; with `prefers-reduced-motion: reduce` the animation is `none` and the text is fully visible at once. The text stays one DOM string per line (no letter splitting).
+- Tabs: arrow keys and Home/End move selection and focus; panel changes only on the owner's action (250 ms fade).
+- Gallery: 6 cards; dialog opens with focus inside, closes on Escape and on «أغلق المعاينة», and focus returns to the card; phone «التالي» scrolls the row (RTL).
+- Calculator: 50 browser checks pass (boundaries 1…501, larger choice then count change, Arabic and Persian digits, invalid input, meter 100/250 → «150 دعوة إضافية…», 248 → «دعوتان إضافيتان…», full at 250, larger package 100/500 with price 1,790, input/price/meter in sync). Unit tests 7/7.
+- Full registration through Mailpit OTP from the calculator CTA (count typed as «٣٢٠») lands on the wizard with the package and 320 preserved; smaller packages disabled; the details preview mirrors the typed name.
+- Contact: server error shows «تعذّر إرسال الرسالة» and keeps the inputs; the pending state shows on the button; success appears only after the local API answered and moves focus to the confirmation. Messages went to Mailpit only.
+- Widths 1440, 1280, 1024, 768, 390, 360, 320: no horizontal page scroll.
+- Typecheck, lint, Prettier and production build pass. Test users, events and the contact message were deleted afterwards.
+
+Not verified: admin list empty states were not opened in the browser (the shared component was checked on the owner list); scanner (05) and guest (06) pages do not exist yet; Figma typing settings were not used as evidence (the animation was measured in the browser).
+- Follow-up (owner request): the impact figures count up once (about 1.4 s, ease-out) when the band scrolls into view. Measured in Chromium: 0 before scrolling, intermediate values at 150/500/900 ms, exactly 12 / 25,000 / 24,000 at the end; band height unchanged (an invisible copy of the final value reserves the width); the server HTML and the screen-reader text hold the final values; with reduced motion the final values show at once.
+
+## 2026-11-07 — Landing motion phase 1 (T-P1-08)
+
+Foundation only (tokens, `lib/motion.ts`, `Reveal` on `data-reveal` with stagger). Uncommitted.
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm build`: pass.
+- Playwright (Chromium 1194, WebKit 26.0) at 1440/768/360/320, 80 checks, 80 pass on a production server (`next start`): steps armed only below the fold and revealed with 0/80/160/240 ms delays (opacity sampled mid-transition in both engines); nothing left `data-reveal="armed"` after a full scroll; count-up ends at 12 / 25,000 / 24,000; hero `type-reveal` unchanged (0.7 s, second line +0.8 s); no horizontal overflow; no console errors; measured CLS over load plus a full scroll 0.0000 at every width; reduced motion: nothing armed, final values, static hero; JavaScript off: steps visible; print media: armed steps print visible.
+- On the dev server Chromium at 320 px measured CLS 0.0154 from the hero paragraph re-wrapping while the web font loads (dev only; 0 on the production server). Not caused by the motion work.
+
