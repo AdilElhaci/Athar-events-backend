@@ -180,3 +180,14 @@ Uncommitted, not deployed. Migration `AddInvitationContents`; module `invitation
 - Browser (Chromium, local API, temporary QA accounts and event deleted afterwards): admin tab prefilled from the event; live preview follows the typed date; saving moved the task to «متابعة اعتماد الدعوة»; the owner at 390 px saw the WhatsApp-style preview, approved, and the next step became «سيتم جدولة الإرسال قريباً»; the admin then saw «اعتمدها صاحب المناسبة», three of four conditions met and «جدولة الإرسال» disabled because the template is `PENDING`; no horizontal scroll at 1440 and 390; no page errors.
 
 Not verified in the browser: the scheduled state (needs `WHATSAPP_INVITATION_TEMPLATE_STATUS=APPROVED`; covered by e2e) and the override dialog (covered by e2e).
+
+## 2026-11-10 — WhatsApp tracer on production and campaign sender (T-P1-10, T-P3-07)
+
+Tracer: deployed (`f69609d`, `b696aea`). Campaign sender: uncommitted, not deployed.
+
+- Production, real phones, client number on WABA «أثر ايفنتس - Messaging campaigns»: a manual template send was accepted but not delivered until Meta's billing block was fixed (statuses `FAILED` in `webhook_receipts`), then delivered. Event AE-000002: the CLI sent the approved invitation to two guests (`SENT`); the owner tapped «سأحضر» → dashboard `ACCEPTED` and the QR image with its link arrived; a second guest tapped «أعتذر» → dashboard `DECLINED`, no QR.
+- `test/whatsapp.e2e-spec.ts`, 22/22, 8 new: failure code kept on the receipt for platform and manual messages; a due campaign sends once to each live initial guest (not the reserve or a removed guest), allocates them and ends `SENT`, a second sweep sends nothing; a guest already invited by the tracer is not invited again; not started before `send_at`, after an approval reset, or while the template is not approved (stays `SCHEDULED`); an overdue campaign whose event started is `CANCELLED` with nothing sent (AC-06-5); intents still queued when the event starts are `CANCELLED` `event_started` and the campaign closes; a queued QR image goes out before queued invitations.
+- Full backend: e2e 122/122, unit 47/47, typecheck, lint, Prettier and `nest build` pass.
+
+Not verified: a real scheduled campaign on production; Meta's tier limits at volume.
+

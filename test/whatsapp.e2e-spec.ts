@@ -8,11 +8,20 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { hashQrToken } from '../src/modules/checkin/qr-token';
 import { REDIS } from '../src/modules/auth/services/rate-limit.service';
+import { ConfigService } from '@nestjs/config';
 import {
   Event,
+  EventApprovalStatus,
+  EventCampaignStatus,
+  EventListStatus,
   EventPaymentStatus,
 } from '../src/modules/events/entities/event.entity';
-import { Guest, GuestRsvp } from '../src/modules/guests/entities/guest.entity';
+import {
+  Guest,
+  GuestAllocationStatus,
+  GuestKind,
+  GuestRsvp,
+} from '../src/modules/guests/entities/guest.entity';
 import { InvitationContent } from '../src/modules/invitations/entities/invitation-content.entity';
 import {
   WhatsappInbound,
@@ -546,6 +555,215 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
       const id = await replyHook(wamid, 'RSVP_ACCEPT');
       expect((await inbound(id)).outcome).toBe(WhatsappInboundOutcome.LOCKED);
       expect((await reloadGuest(guest.id)).rsvp).toBe(GuestRsvp.DECLINED);
+    });
+  });
+  describe('scheduled campaigns (SP-04 sending)', () => {
+    const sweep = () => app.get(WhatsappSweeperJob).run(-1);
+    const events = () => db.getRepository(Event);
+
+    /** A scheduled event whose send time has come, with 3 initial guests, a reserve and a removed one. */
+    async function dueCampaign(opts: { startsInMs?: number } = {}) {
+      const first = await createGuest({ phone: '+966500000001' });
+      const eventId = first.eventId;
+      const guests = db.getRepository(Guest);
+      await guests.save([
+        guests.create({ eventId, name: 'ضيف ٢', phone: '+966500000002' }),
+        guests.create({ eventId, name: 'ضيف ٣', phone: '+966500000003' }),
+        guests.create({
+          eventId,
+          name: 'احتياط',
+          phone: '+966500000004',
+          kind: GuestKind.RESERVE,
+        }),
+        guests.create({
+          eventId,
+          name: 'محذوف',
+          phone: '+966500000005',
+          deletedAt: new Date(),
+        }),
+      ]);
+      const startsAt = new Date(Date.now() + (opts.startsInMs ?? 10 * DAY_MS));
+      await events().update(eventId, {
+        startsAt,
+        admissionOpensAt: new Date(startsAt.getTime() - 3_600_000),
+        admissionClosesAt: new Date(startsAt.getTime() + 3_600_000),
+        listStatus: EventListStatus.READY,
+        approvalStatus: EventApprovalStatus.APPROVED,
+        campaignStatus: EventCampaignStatus.SCHEDULED,
+        scheduleVersion: 1,
+        sendAt: new Date(Math.min(Date.now() - 1_000, startsAt.getTime() - 1)),
+      });
+      return eventId;
+    }
+
+    beforeAll(() =>
+      app
+        .get(ConfigService)
+        .set('WHATSAPP_INVITATION_TEMPLATE_STATUS', 'APPROVED'),
+    );
+
+    // Each test sees only its own campaign: earlier ones that stay due are set aside.
+    beforeEach(() =>
+      db.query(
+        `UPDATE events SET campaign_status = 'NOT_SCHEDULED', send_at = NULL WHERE campaign_status = 'SCHEDULED'`,
+      ),
+    );
+
+    it('sends once to every live initial guest, then SENT', async () => {
+      const eventId = await dueCampaign();
+      meta.reset();
+      const result = await sweep();
+      expect(result.started).toBe(1);
+
+      const to = meta.sent.map((sent) => sent.to).sort();
+      expect(to).toEqual(['+966500000001', '+966500000002', '+966500000003']);
+      const event = await events().findOneByOrFail({ id: eventId });
+      expect(event.campaignStatus).toBe(EventCampaignStatus.SENT);
+      const intents = await messages().findBy({ eventId });
+      expect(intents).toHaveLength(3);
+      expect(intents.every((m) => m.state === WhatsappMessageState.SENT)).toBe(
+        true,
+      );
+      const allocated = await db.getRepository(Guest).countBy({
+        eventId,
+        allocationStatus: GuestAllocationStatus.ALLOCATED,
+      });
+      expect(allocated).toBe(3);
+
+      meta.reset();
+      await sweep();
+      expect(meta.sent).toHaveLength(0);
+    });
+
+    it('does not invite again a guest the tracer already invited', async () => {
+      const eventId = await dueCampaign();
+      const [tracerGuest] = await db
+        .getRepository(Guest)
+        .find({ where: { eventId, phone: '+966500000001' } });
+      await events().update(eventId, { scheduleVersion: 0 });
+      await sender.sendTracerInvitation(tracerGuest.id);
+      await events().update(eventId, { scheduleVersion: 1 });
+      meta.reset();
+      await sweep();
+      expect(meta.sent.map((sent) => sent.to).sort()).toEqual([
+        '+966500000002',
+        '+966500000003',
+      ]);
+    });
+
+    it('is not started before its time or when approval was reset', async () => {
+      const early = await dueCampaign();
+      await events().update(early, {
+        sendAt: new Date(Date.now() + 3_600_000),
+      });
+      const reset = await dueCampaign();
+      await events().update(reset, {
+        approvalStatus: EventApprovalStatus.AWAITING_OWNER,
+        approvedContentId: null,
+      });
+      meta.reset();
+      await sweep();
+      expect(meta.sent).toHaveLength(0);
+      for (const id of [early, reset]) {
+        const event = await events().findOneByOrFail({ id });
+        expect(event.campaignStatus).toBe(EventCampaignStatus.SCHEDULED);
+        expect(await messages().countBy({ eventId: id })).toBe(0);
+      }
+    });
+
+    it('waits while the template is not approved', async () => {
+      const eventId = await dueCampaign();
+      app
+        .get(ConfigService)
+        .set('WHATSAPP_INVITATION_TEMPLATE_STATUS', 'PENDING');
+      try {
+        meta.reset();
+        await sweep();
+        expect(meta.sent).toHaveLength(0);
+        expect(
+          (await events().findOneByOrFail({ id: eventId })).campaignStatus,
+        ).toBe(EventCampaignStatus.SCHEDULED);
+      } finally {
+        app
+          .get(ConfigService)
+          .set('WHATSAPP_INVITATION_TEMPLATE_STATUS', 'APPROVED');
+      }
+    });
+
+    it('AC-06-5: an overdue campaign is never sent after the event starts', async () => {
+      const eventId = await dueCampaign();
+      // An outage: the event started before the sweeper ran.
+      await db.query(
+        `UPDATE events SET send_at = now() - interval '2 hours', starts_at = now() - interval '1 hour',
+                admission_opens_at = now() - interval '2 hours', admission_closes_at = now() + interval '2 hours'
+          WHERE id = $1`,
+        [eventId],
+      );
+      meta.reset();
+      await sweep();
+      expect(meta.sent).toHaveLength(0);
+      const event = await events().findOneByOrFail({ id: eventId });
+      expect(event.campaignStatus).toBe(EventCampaignStatus.CANCELLED);
+    });
+
+    it('cancels what is still queued when the event starts mid-campaign', async () => {
+      const eventId = await dueCampaign();
+      // Intents exist but were not sent yet (settle window), then the event starts.
+      await app.get(WhatsappSweeperJob).run(60_000);
+      expect(
+        await messages().countBy({
+          eventId,
+          state: WhatsappMessageState.QUEUED,
+        }),
+      ).toBe(3);
+      await db.query(
+        `UPDATE events SET send_at = now() - interval '2 hours', starts_at = now() - interval '1 hour',
+                admission_opens_at = now() - interval '2 hours', admission_closes_at = now() + interval '2 hours'
+          WHERE id = $1`,
+        [eventId],
+      );
+      meta.reset();
+      await sweep();
+      expect(meta.sent).toHaveLength(0);
+      const intents = await messages().findBy({ eventId });
+      expect(
+        intents.every((m) => m.state === WhatsappMessageState.CANCELLED),
+      ).toBe(true);
+      expect(intents.every((m) => m.lastErrorCode === 'event_started')).toBe(
+        true,
+      );
+      expect(
+        (await events().findOneByOrFail({ id: eventId })).campaignStatus,
+      ).toBe(EventCampaignStatus.SENT);
+    });
+
+    it('a queued QR image goes out before queued campaign invitations', async () => {
+      const eventId = await dueCampaign();
+      await app.get(WhatsappSweeperJob).run(60_000); // queue the campaign, send nothing
+      const accepted = await createGuest({ phone: '+966500000009' });
+      await db
+        .getRepository(Guest)
+        .update(accepted.id, { rsvp: GuestRsvp.ACCEPTED });
+      await messages().save(
+        messages().create({
+          eventId: accepted.eventId,
+          guestId: accepted.id,
+          kind: WhatsappMessageKind.QR,
+          logicalKey: `qr:${accepted.id}:1`,
+          qrVersion: 1,
+        }),
+      );
+      meta.reset();
+      await sweep();
+      expect(meta.sent.map((sent) => sent.type)).toEqual([
+        'image',
+        'template',
+        'template',
+        'template',
+      ]);
+      expect(
+        (await events().findOneByOrFail({ id: eventId })).campaignStatus,
+      ).toBe(EventCampaignStatus.SENT);
     });
   });
 });

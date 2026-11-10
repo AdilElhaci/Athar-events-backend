@@ -150,7 +150,10 @@ export class WhatsappSenderService {
     return result.affected ?? 0;
   }
 
-  /** Queued intents not picked up inline (crash, retry-later); oldest first. */
+  /**
+   * One chunk of queued intents: campaign invitations and anything not picked up inline (crash,
+   * retry-later). QR images first, so an accepted guest never waits behind a campaign; then oldest.
+   */
   async processQueued(limit = 50, settleMs = 10_000): Promise<number> {
     const due = await this.messages
       .createQueryBuilder('m')
@@ -159,7 +162,11 @@ export class WhatsappSenderService {
         queued: WhatsappMessageState.QUEUED,
         settled: new Date(Date.now() - settleMs),
       })
-      .orderBy('m.created_at', 'ASC')
+      .orderBy(
+        `CASE WHEN m.kind = '${WhatsappMessageKind.INVITATION}' THEN 1 ELSE 0 END`,
+        'ASC',
+      )
+      .addOrderBy('m.created_at', 'ASC')
       .limit(limit)
       .getRawMany<{ id: string }>();
     for (const { id } of due) await this.process(id);

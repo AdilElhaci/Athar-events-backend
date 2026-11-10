@@ -12,6 +12,7 @@ import { WhatsappMessage } from './entities/whatsapp-message.entity';
 import { InvitationsService } from './invitations.service';
 import { OwnerInvitationController } from './owner-invitation.controller';
 import { HttpWhatsappClient, WhatsappClient } from './whatsapp/whatsapp.client';
+import { CampaignSenderService } from './whatsapp/campaign-sender.service';
 import { WhatsappSenderService } from './whatsapp/whatsapp-sender.service';
 import { WhatsappSweeperJob } from './whatsapp/whatsapp-sweeper.job';
 import { WhatsappWebhookController } from './whatsapp/whatsapp-webhook.controller';
@@ -39,6 +40,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     InvitationsService,
     { provide: WhatsappClient, useClass: HttpWhatsappClient },
     WhatsappSenderService,
+    CampaignSenderService,
     WhatsappWebhookService,
     WhatsappSweeperJob,
   ],

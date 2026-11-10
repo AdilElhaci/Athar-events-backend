@@ -7,14 +7,19 @@ import {
   type EnvironmentVariables,
 } from '../../../config/env.validation';
 import { REDIS } from '../../auth/services/rate-limit.service';
+import { CampaignSenderService } from './campaign-sender.service';
 import { WhatsappSenderService } from './whatsapp-sender.service';
 
 const LOCK_KEY = 'lock:whatsapp:sweep';
 const LOCK_TTL_MS = 2 * 60_000;
+const CHUNK = 50;
+/** A tick stops taking new chunks after this, well inside the lock TTL and the 30 s interval. */
+const TICK_BUDGET_MS = 20_000;
 
 /**
- * Every 30 s: stale `SENDING` claims become `UNKNOWN`, then queued intents that were not sent
- * inline (crash, retry-later) are sent. Claims are conditional, so the Redis lock only avoids
+ * Every 30 s: stale `SENDING` claims become `UNKNOWN`; started events cancel what is still queued;
+ * due campaigns create their intents; queued intents are sent in chunks of 50; finished campaigns
+ * become `SENT` (SP-04 §4). Claims are conditional, so the Redis lock only avoids
  * wasted work between the blue and green containers. Replaced by BullMQ workers in T-P3-05.
  */
 @Injectable()
@@ -24,6 +29,7 @@ export class WhatsappSweeperJob {
 
   constructor(
     private readonly sender: WhatsappSenderService,
+    private readonly campaigns: CampaignSenderService,
     @Inject(REDIS) private readonly redis: Redis,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
@@ -47,9 +53,23 @@ export class WhatsappSweeperJob {
     }
   }
 
-  async run(settleMs?: number): Promise<{ stale: number; sent: number }> {
+  async run(settleMs?: number): Promise<{
+    stale: number;
+    started: number;
+    sent: number;
+    completed: number;
+  }> {
     const stale = await this.sender.recoverStale();
-    const sent = await this.sender.processQueued(50, settleMs);
-    return { stale, sent };
+    await this.campaigns.cancelStarted();
+    const started = await this.campaigns.startDue();
+    const deadline = Date.now() + TICK_BUDGET_MS;
+    let sent = 0;
+    for (;;) {
+      const chunk = await this.sender.processQueued(CHUNK, settleMs);
+      sent += chunk;
+      if (chunk < CHUNK || Date.now() >= deadline) break;
+    }
+    const completed = await this.campaigns.completeFinished();
+    return { stale, started, sent, completed };
   }
 }
