@@ -4,6 +4,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { AdminAction } from '../modules/admin-actions/admin-action.entity';
 import { ArticleImage } from '../modules/articles/entities/article-image.entity';
 import { Article } from '../modules/articles/entities/article.entity';
+import { Testimonial } from '../modules/testimonials/entities/testimonial.entity';
 import { AuthToken } from '../modules/auth/entities/auth-token.entity';
 import { EmailChallenge } from '../modules/auth/entities/email-challenge.entity';
 import { RefreshToken } from '../modules/auth/entities/refresh-token.entity';
@@ -34,6 +35,7 @@ export const ENTITIES = [
   Event,
   Article,
   ArticleImage,
+  Testimonial,
   ContactMessage,
   PaymentAttempt,
   WebhookReceipt,
