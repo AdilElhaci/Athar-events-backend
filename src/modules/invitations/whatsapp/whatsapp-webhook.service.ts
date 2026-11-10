@@ -196,9 +196,22 @@ export class WhatsappWebhookService {
         .setParameter('at', at);
     }
     const result = await update.execute();
+    // Meta's failure code is the only way to learn why a message was not delivered,
+    // including for messages sent outside the platform (manual tests). Code only, never a payload.
+    const errorCode =
+      next === WhatsappDeliveryStatus.FAILED
+        ? typeof code === 'number'
+          ? `meta_${code}`
+          : 'meta_failed'
+        : null;
+    if (errorCode)
+      this.logger.warn(
+        `WhatsApp delivery failed: ${errorCode} (${result.affected ? 'matched' : 'unmatched'})`,
+      );
     await this.receipts.update(receipt.id, {
       processedAt: new Date(),
       outcome: result.affected ? 'applied' : 'no_change',
+      errorCode,
     });
   }
 

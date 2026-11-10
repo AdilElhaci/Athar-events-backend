@@ -32,6 +32,7 @@ import {
 } from '../src/modules/invitations/whatsapp/whatsapp-sender.service';
 import { WhatsappSweeperJob } from '../src/modules/invitations/whatsapp/whatsapp-sweeper.job';
 import { MailService } from '../src/modules/mail/mail.service';
+import { WebhookReceipt } from '../src/modules/payments/entities/webhook-receipt.entity';
 import {
   User,
   UserStatus,
@@ -370,6 +371,31 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
       const intent = await messages().findOneByOrFail({ guestId: guest.id });
       expect(intent.deliveryStatus).toBe(WhatsappDeliveryStatus.FAILED);
       expect(intent.lastErrorCode).toBe('meta_131026');
+      const receipt = await db
+        .getRepository(WebhookReceipt)
+        .findOneByOrFail({ dedupeKey: `${wamid}:FAILED` });
+      expect(receipt.errorCode).toBe('meta_131026');
+    });
+
+    it('keeps the failure code of a message the platform did not send', async () => {
+      const wamid = 'wamid.manual.1';
+      await post(
+        envelope({
+          statuses: [
+            {
+              id: wamid,
+              status: 'failed',
+              timestamp: String(Math.floor(Date.now() / 1000)),
+              errors: [{ code: 131047 }],
+            },
+          ],
+        }),
+      ).expect(200);
+      const receipt = await db
+        .getRepository(WebhookReceipt)
+        .findOneByOrFail({ dedupeKey: `${wamid}:FAILED` });
+      expect(receipt.outcome).toBe('no_change');
+      expect(receipt.errorCode).toBe('meta_131047');
     });
   });
 
