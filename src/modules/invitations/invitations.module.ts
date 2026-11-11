@@ -11,6 +11,7 @@ import { WhatsappInbound } from './entities/whatsapp-inbound.entity';
 import { WhatsappMessage } from './entities/whatsapp-message.entity';
 import { InvitationsService } from './invitations.service';
 import { OwnerInvitationController } from './owner-invitation.controller';
+import { AdminWhatsappTemplatesController } from './whatsapp/admin-whatsapp-templates.controller';
 import { HttpWhatsappClient, WhatsappClient } from './whatsapp/whatsapp.client';
 import { CampaignSenderService } from './whatsapp/campaign-sender.service';
 import { WhatsappSenderService } from './whatsapp/whatsapp-sender.service';
@@ -35,6 +36,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     AdminInvitationsController,
     OwnerInvitationController,
     WhatsappWebhookController,
+    AdminWhatsappTemplatesController,
   ],
   providers: [
     InvitationsService,

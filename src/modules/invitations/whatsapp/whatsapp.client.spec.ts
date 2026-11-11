@@ -116,4 +116,121 @@ describe('HttpWhatsappClient', () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  describe('listTemplates', () => {
+    const templatesClient = (extra: Record<string, string> = {}) =>
+      new HttpWhatsappClient(
+        config({
+          WHATSAPP_ACCESS_TOKEN: 'token',
+          WHATSAPP_WABA_ID: '987654',
+          WHATSAPP_GRAPH_BASE_URL: 'https://graph.test',
+          WHATSAPP_GRAPH_VERSION: 'v23.0',
+          ...extra,
+        }) as never,
+      );
+
+    it('reads every page and maps body, buttons and rejection', async () => {
+      const fetchMock = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: '1',
+                  name: 'athar_invitation',
+                  language: 'ar',
+                  status: 'APPROVED',
+                  category: 'MARKETING',
+                  rejected_reason: 'NONE',
+                  components: [
+                    { type: 'BODY', text: 'مرحباً {{1}}' },
+                    {
+                      type: 'BUTTONS',
+                      buttons: [{ text: 'قبول' }, { text: 'اعتذار' }],
+                    },
+                  ],
+                },
+              ],
+              paging: { next: 'https://graph.test/next-page' },
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: '2',
+                  name: 'athar_qr',
+                  language: 'ar',
+                  status: 'REJECTED',
+                  category: 'UTILITY',
+                  rejected_reason: 'INVALID_FORMAT',
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      const result = await templatesClient().listTemplates();
+      const firstUrl = new URL(fetchMock.mock.calls[0][0] as string);
+      expect(firstUrl.pathname).toBe('/v23.0/987654/message_templates');
+      expect(firstUrl.searchParams.get('fields')).toContain('components');
+      expect(fetchMock.mock.calls[1][0]).toBe('https://graph.test/next-page');
+      expect(result).toEqual({
+        ok: true,
+        templates: [
+          {
+            id: '1',
+            name: 'athar_invitation',
+            language: 'ar',
+            category: 'MARKETING',
+            status: 'APPROVED',
+            rejectedReason: null,
+            body: 'مرحباً {{1}}',
+            buttons: ['قبول', 'اعتذار'],
+          },
+          {
+            id: '2',
+            name: 'athar_qr',
+            language: 'ar',
+            category: 'UTILITY',
+            status: 'REJECTED',
+            rejectedReason: 'INVALID_FORMAT',
+            body: null,
+            buttons: [],
+          },
+        ],
+      });
+    });
+
+    it('reports the Meta error code', async () => {
+      respond(400, { error: { code: 100 } });
+      await expect(templatesClient().listTemplates()).resolves.toEqual({
+        ok: false,
+        code: 'meta_100',
+      });
+    });
+
+    it('reports network failures', async () => {
+      networkError('ENOTFOUND');
+      await expect(templatesClient().listTemplates()).resolves.toEqual({
+        ok: false,
+        code: 'ENOTFOUND',
+      });
+    });
+
+    it('calls nothing without a WABA id', async () => {
+      const fetchMock = jest.spyOn(global, 'fetch');
+      const unconfigured = templatesClient({ WHATSAPP_WABA_ID: '' });
+      expect(unconfigured.canListTemplates()).toBe(false);
+      await expect(unconfigured.listTemplates()).resolves.toEqual({
+        ok: false,
+        code: 'not_configured',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
 });

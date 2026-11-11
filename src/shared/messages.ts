@@ -116,6 +116,8 @@ export const MESSAGES = {
   'campaign.send_after_event': 'موعد الإرسال يجب أن يسبق موعد المناسبة.',
   'campaign.already_started': 'بدأ الإرسال أو انتهى، فلا يمكن تغيير الجدولة.',
   'campaign.not_scheduled': 'المناسبة غير مجدولة.',
+  'whatsapp.templates_unavailable':
+    'تعذّر جلب قوالب واتساب من Meta الآن، حاول بعد قليل.',
   'user.phone_invalid':
     'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',
 } as const;

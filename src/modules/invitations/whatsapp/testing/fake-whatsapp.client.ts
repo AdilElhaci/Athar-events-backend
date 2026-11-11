@@ -1,5 +1,7 @@
 import {
+  MessageTemplate,
   SendOutcome,
+  TemplatesOutcome,
   TemplateMessage,
   UploadOutcome,
   WhatsappClient,
@@ -24,6 +26,20 @@ export class FakeWhatsappClient extends WhatsappClient {
     return this.configured;
   }
 
+  /** What Meta returns for the WABA; set `templatesError` to make the read fail. */
+  templates: MessageTemplate[] = [];
+  templatesError: string | null = null;
+
+  canListTemplates(): boolean {
+    return this.configured;
+  }
+
+  listTemplates(): Promise<TemplatesOutcome> {
+    if (this.templatesError)
+      return Promise.resolve({ ok: false, code: this.templatesError });
+    return Promise.resolve({ ok: true, templates: [...this.templates] });
+  }
+
   sendTemplate(to: string, template: TemplateMessage): Promise<SendOutcome> {
     return this.accept((id) => ({ type: 'template', to, template, id }));
   }
@@ -45,6 +61,8 @@ export class FakeWhatsappClient extends WhatsappClient {
   }
 
   reset(): void {
+    this.templates = [];
+    this.templatesError = null;
     this.sent = [];
     this.uploads = [];
     this.nextOutcome = null;

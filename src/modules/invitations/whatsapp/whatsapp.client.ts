@@ -26,9 +26,31 @@ export interface TemplateMessage {
 export type UploadOutcome =
   { ok: true; mediaId: string } | { ok: false; retry: boolean; code: string };
 
+/** One message template as Meta reports it (read-only; templates are managed in WhatsApp Manager). */
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  language: string;
+  /** `MARKETING`, `UTILITY` or `AUTHENTICATION`, as Meta assigned it. */
+  category: string;
+  /** `APPROVED`, `PENDING`, `REJECTED`, `PAUSED`, `DISABLED`, … */
+  status: string;
+  rejectedReason: string | null;
+  /** The BODY component text with its {{n}} placeholders. */
+  body: string | null;
+  /** Button labels in order. */
+  buttons: string[];
+}
+
+export type TemplatesOutcome =
+  { ok: true; templates: MessageTemplate[] } | { ok: false; code: string };
+
 /** The DI token and the contract; e2e tests swap in `FakeWhatsappClient`. */
 export abstract class WhatsappClient {
   abstract isConfigured(): boolean;
+  /** Token and WABA id are set, so templates can be read. */
+  abstract canListTemplates(): boolean;
+  abstract listTemplates(): Promise<TemplatesOutcome>;
   /** `to` is `+9665…`; the leading plus is dropped for Meta. */
   abstract sendTemplate(
     to: string,
@@ -53,6 +75,48 @@ const errorCode = (body: unknown): number | undefined => {
   return typeof error?.code === 'number' ? error.code : undefined;
 };
 
+/** Meta pages templates; stop after this many pages so a bad `next` link cannot loop. */
+const MAX_TEMPLATE_PAGES = 10;
+const TEMPLATE_FIELDS =
+  'id,name,language,status,category,rejected_reason,components';
+
+interface RawTemplate {
+  id?: unknown;
+  name?: unknown;
+  language?: unknown;
+  status?: unknown;
+  category?: unknown;
+  rejected_reason?: unknown;
+  components?: Array<{
+    type?: unknown;
+    text?: unknown;
+    buttons?: Array<{ text?: unknown }>;
+  }>;
+}
+
+const str = (value: unknown): string =>
+  typeof value === 'string' ? value : '';
+
+export const toMessageTemplate = (raw: RawTemplate): MessageTemplate => {
+  const components = Array.isArray(raw.components) ? raw.components : [];
+  const body = components.find((c) => c.type === 'BODY');
+  const buttons = components.find((c) => c.type === 'BUTTONS');
+  const reason = str(raw.rejected_reason);
+  return {
+    id: str(raw.id),
+    name: str(raw.name),
+    language: str(raw.language),
+    category: str(raw.category),
+    status: str(raw.status),
+    // Meta sends "NONE" when there is no rejection.
+    rejectedReason: reason && reason !== 'NONE' ? reason : null,
+    body: typeof body?.text === 'string' ? body.text : null,
+    buttons: (Array.isArray(buttons?.buttons) ? buttons.buttons : [])
+      .map((b) => str(b.text))
+      .filter(Boolean),
+  };
+};
+
 const networkCode = (error: unknown): string | undefined => {
   const cause = (error as { cause?: { code?: unknown } }).cause;
   return typeof cause?.code === 'string' ? cause.code : undefined;
@@ -62,6 +126,7 @@ const networkCode = (error: unknown): string | undefined => {
 export class HttpWhatsappClient extends WhatsappClient {
   private readonly token: string;
   private readonly phoneNumberId: string;
+  private readonly wabaId: string;
   private readonly baseUrl: string;
 
   constructor(config: ConfigService<EnvironmentVariables, true>) {
@@ -69,6 +134,7 @@ export class HttpWhatsappClient extends WhatsappClient {
     this.token = config.get('WHATSAPP_ACCESS_TOKEN', { infer: true }) ?? '';
     this.phoneNumberId =
       config.get('WHATSAPP_PHONE_NUMBER_ID', { infer: true }) ?? '';
+    this.wabaId = config.get('WHATSAPP_WABA_ID', { infer: true }) ?? '';
     const base = config
       .get('WHATSAPP_GRAPH_BASE_URL', { infer: true })
       .replace(/\/+$/, '');
@@ -77,6 +143,43 @@ export class HttpWhatsappClient extends WhatsappClient {
 
   isConfigured(): boolean {
     return this.token.length > 0 && this.phoneNumberId.length > 0;
+  }
+
+  canListTemplates(): boolean {
+    return this.token.length > 0 && this.wabaId.length > 0;
+  }
+
+  async listTemplates(): Promise<TemplatesOutcome> {
+    if (!this.canListTemplates()) return { ok: false, code: 'not_configured' };
+    const templates: MessageTemplate[] = [];
+    const first = new URL(`${this.baseUrl}/${this.wabaId}/message_templates`);
+    first.searchParams.set('fields', TEMPLATE_FIELDS);
+    first.searchParams.set('limit', '100');
+    let next: string | undefined = first.toString();
+    for (let page = 0; next && page < MAX_TEMPLATE_PAGES; page++) {
+      let response: Response;
+      try {
+        response = await fetch(next, {
+          headers: { Authorization: `Bearer ${this.token}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+      } catch (error) {
+        return { ok: false, code: networkCode(error) ?? 'network' };
+      }
+      const body = (await response.json().catch(() => null)) as {
+        data?: RawTemplate[];
+        paging?: { next?: unknown };
+      } | null;
+      if (!response.ok || !Array.isArray(body?.data))
+        return {
+          ok: false,
+          code: `meta_${errorCode(body) ?? response.status}`,
+        };
+      templates.push(...body.data.map(toMessageTemplate));
+      next =
+        typeof body.paging?.next === 'string' ? body.paging.next : undefined;
+    }
+    return { ok: true, templates };
   }
 
   sendTemplate(to: string, template: TemplateMessage): Promise<SendOutcome> {
