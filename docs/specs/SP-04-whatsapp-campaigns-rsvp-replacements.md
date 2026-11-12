@@ -49,6 +49,7 @@ Default per [D-16](../product/decisions.md), pending [OQ-01](../product/open-que
 - Eligible declines = allocated guests of the event with `rsvp = DECLINED` and no replacement linked to them yet.
 - `POST /admin/events/:id/replacements` (`count` or explicit reserve `guestIds`): in one transaction holding the event row lock, for each requested replacement take one eligible decline and one unallocated reserve guest; require `replacements_used < extra_margin`; set the reserve guest `ALLOCATED` with `replacement_for_guest_id = <decline>`, set the decline's `rsvp_locked = true`, create an `INVITATION` intent; enqueue sending immediately (replacements are not scheduled).
 - A replacement guest's own decline is also an eligible decline.
+- *Implementation (2026-11-12):* `replacements.service.ts`. Requests are refused until the campaign has started (`SENDING`, `PAUSED` or `SENT`) and once the event has started. `count` pairs the oldest declines (by `rsvp_at`) with reserves in list order; `guestIds` picks the reserves. `GET /admin/events/:id/replacements` feeds SCR-24.
 
 ### Counts
 

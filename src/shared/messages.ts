@@ -132,6 +132,17 @@ export const MESSAGES = {
     'مرّ أكثر من 23 ساعة على رد الضيف؛ يُرسل الرمز بقالب معتمد (غير متاح بعد).',
   'messages.kind_unsupported': 'لا يمكن إعادة إرسال هذا النوع من الرسائل.',
   'messages.resolved': 'تمت معالجة الرسالة.',
+  'replacements.sent': 'أُرسلت دعوات البدلاء.',
+  'replacements.count_or_guests':
+    'حدد عدد البدلاء أو اختر الضيوف، وليس الاثنين.',
+  'replacements.campaign_not_started':
+    'يُرسل البدلاء بعد بدء إرسال الدعوات الأساسية.',
+  'replacements.event_started': 'بدأت المناسبة، فلا يمكن إرسال بدلاء.',
+  'replacements.margin_exhausted': 'استُنفد عدد الإضافات المسموح في الباقة.',
+  'replacements.no_declines_available':
+    'لا توجد اعتذارات كافية لم يُرسل بدلها بعد.',
+  'replacements.no_reserves': 'لا يوجد ضيوف احتياطيون كافون في القائمة.',
+  'replacements.guest_invalid': 'أحد الضيوف المختارين ليس احتياطياً متاحاً.',
   'whatsapp.templates_unavailable':
     'تعذّر جلب قوالب واتساب من Meta الآن، حاول بعد قليل.',
   'whatsapp.not_configured':

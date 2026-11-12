@@ -128,7 +128,7 @@ Constraint: `UQ_payment_attempts_event_paid` — partial unique `(event_id) WHER
 | source | enum (`MANUAL`, `IMPORT`) | `import_id` when imported |
 | allocation_status | enum (`NOT_ALLOCATED`, `ALLOCATED`) | `ALLOCATED` = counted against allowance or margin and eligible to receive the invitation |
 | allocated_at | timestamptz null | |
-| replacement_for_guest_id | uuid → guests null | Partial `UQ`; `CHECK (kind = 'RESERVE' OR replacement_for_guest_id IS NULL)` |
+| replacement_for_guest_id | uuid → guests null | Partial `UQ`; `CHECK (kind = 'RESERVE' OR replacement_for_guest_id IS NULL)` (migration `AddGuestReplacements`, 2026-11-12) |
 | rsvp | enum (`PENDING`, `ACCEPTED`, `DECLINED`) | |
 | rsvp_at | timestamptz null | |
 | rsvp_locked | boolean default false | True once this decline funded a replacement ([D-16](../product/decisions.md)) |

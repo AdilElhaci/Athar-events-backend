@@ -34,7 +34,7 @@ export enum GuestRsvp {
 /**
  * One named guest with one Saudi mobile (OQ-03, OQ-18). Quotas are checked under the event row
  * lock; the partial unique index keeps one live guest per phone and event. The QR token itself is
- * never stored: only its SHA-256 (SP-05). The replacement link arrives with T-P4-01.
+ * never stored: only its SHA-256 (SP-05).
  */
 @Entity({ name: 'guests' })
 @Index('IDX_guests_event_id', ['eventId'])
@@ -98,6 +98,10 @@ export class Guest {
 
   @Column({ name: 'rsvp_at', type: 'timestamptz', nullable: true })
   rsvpAt!: Date | null;
+
+  /** A reserve guest sent in place of this decline (D-16); unique, reserves only (migration). */
+  @Column({ name: 'replacement_for_guest_id', type: 'uuid', nullable: true })
+  replacementForGuestId!: string | null;
 
   /** True once this decline funded a replacement (D-16); later replies change nothing. */
   @Column({ name: 'rsvp_locked', type: 'boolean', default: false })

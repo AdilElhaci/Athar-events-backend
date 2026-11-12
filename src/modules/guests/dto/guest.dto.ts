@@ -116,6 +116,7 @@ export interface AdminGuestView {
   checkedInAt: Date | null;
   note: string | null;
   createdAt: Date;
+  replacementForGuestId: string | null;
 }
 
 export interface OwnerGuestView {
@@ -137,6 +138,7 @@ export const toAdminGuestView = (guest: Guest): AdminGuestView => ({
   rsvp: guest.rsvp,
   checkedInAt: guest.checkedInAt,
   note: guest.note,
+  replacementForGuestId: guest.replacementForGuestId,
   createdAt: guest.createdAt,
 });
 
