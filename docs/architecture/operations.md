@@ -58,17 +58,18 @@ Seeds (`platform-admins`: creates admins from `PLATFORM_ADMIN_EMAILS` if missing
 ## Database
 
 - Roles: `athar_events_migrator` (owns schema) and `athar_events_app` (SELECT/INSERT/UPDATE/DELETE on tables, USAGE on sequences). The application never connects as the superuser (W8).
-- Backups: nightly `pg_dump -Fc` encrypted, copied **off the host** (object storage or a second server chosen by the client), 14 daily + 8 weekly kept.
+- Backups: nightly `pg_dump -Fc` encrypted, copied **off the host** (object storage or a second server chosen by the client), 14 daily + 8 weekly kept. **Deferred by the owner on 2026-11-12 ([D-42](../product/decisions.md#d-42)):** today the only dumps are the ones `deploy-production.sh` takes on the server before each deploy (14 kept, same disk).
 - Restore drill: before launch and after any schema-heavy release, restore into a scratch database and run `SELECT count(*)` checks per table; record it (AC-09-3).
 - Restore during operations: **pause outbound processing first** (stop the worker), restore, then review campaigns and check-ins recorded after the backup time before resuming. A restored database can forget admissions, revocations and sends made after the backup.
 
-## Scheduled jobs (`APP_ROLE=scheduler`)
+## Scheduled jobs (`PROCESS_ROLES` includes `scheduler`)
 
 | Job | Every | Purpose |
 | --- | --- | --- |
-| `campaigns.due-sweeper` | 1 min | Create intents for due campaigns (version-checked), enqueue chunks; skip events whose `starts_at` has passed |
-| `messages.stale-recovery` | 1 min | `SENDING` rows claimed > 2 min ago → `UNKNOWN` |
-| `messages.queued-sweeper` | 1 min | `QUEUED` rows with no active job → enqueue chunk |
+| `whatsapp-sweeper` | 30 s | Writes `heartbeat:scheduler` and adds a sending pass to the BullMQ queue `whatsapp` (runs the pass itself if Redis refuses the job). A pass: `SENDING` claimed > 2 min ago → `UNKNOWN`; started events cancel queued intents; due campaigns create intents; queued intents sent in chunks of 50; finished campaigns → `SENT` |
+| `ops-alerts` | 5 min | The alerts below, e-mailed to `OPS_ALERT_EMAIL` |
+
+The BullMQ worker (`PROCESS_ROLES` includes `worker`, concurrency 1) runs passes and writes `heartbeat:worker`. Passes are also queued right after a replacement send, a resend and a resume, and as a delayed job at `send_at` when a campaign is scheduled (`due:<eventId>:<scheduleVersion>`), so campaigns start on time. Jobs carry no data; PostgreSQL rows stay the truth (D-09).
 | `payments.reconcile` | 5 min | Fetch pending Moyasar attempts |
 | `events.close` | 1 h | Close events 24 h after `admission_closes_at` |
 | `retention.anonymise` | daily | [Data retention](data-model.md#retention) |
@@ -82,14 +83,14 @@ Logs are structured JSON with correlation ids (`requestId`, `eventId`, `guestId`
 | --- | --- | --- |
 | Overdue campaign | `campaign_status = SCHEDULED` and `send_at < now() − 5 min` | Check worker and Redis |
 | Unknown sends | Any `UNKNOWN` message | Admin resolves from the message log |
-| Paid but not applied | Moyasar-paid attempt not `PAID` locally after 15 min | Run reconcile |
-| Second payment | Unique-paid constraint hit | Manual refund |
-| Worker down | No scheduler heartbeat for 3 min | Restart worker |
+| Payment to refund | Attempt `FAILED` with `duplicate_payment`, `event_not_payable` or `mismatch`, not yet recorded refunded | Refund in Moyasar, then «تسجيل الاسترجاع» on SCR-26 |
+| Stuck payment | Attempt `PENDING` for 30 min to 48 h | «مطابقة مع ميسّر» on SCR-26 |
+| Worker down | No `heartbeat:worker` for 3 min | Restart the container |
 | Elevated send failures | > 10% `FAILED` in a campaign | Pause campaign, check template/number quality |
 | Template not approved | Scheduled event's template not `APPROVED` | Block and notify admin |
-| Disk / backup | Backup missing or disk > 80% | Ops |
+| Disk | Root filesystem > 80% used | Free space (old dumps, logs) |
 
-Alert delivery (email to the operations contact) is set up in P5; the channel is part of [OQ-11](../product/open-questions.md).
+**Implemented 2026-11-12 (T-P5-07, `OpsAlertsService`):** every 5 minutes on the scheduler, each condition that holds is e-mailed to `OPS_ALERT_EMAIL` (owner choice: e-mail) through the normal SMTP, then again only every 6 hours while it lasts, and re-armed when it clears. Messages carry counts and event reference codes, never names or phones. Without `OPS_ALERT_EMAIL` alerts are only logged. Not covered: a scheduler that is itself down (no process left to send), and backups (deferred, D-42). An external uptime check on `/api/health` would cover a dead container.
 
 ## Secrets
 

@@ -210,15 +210,16 @@ export class WhatsappSenderService {
     const query = this.messages
       .createQueryBuilder('m')
       .select('m.id', 'id')
-      .where('m.state = :queued AND m.updated_at < :settled', {
-        queued: WhatsappMessageState.QUEUED,
-        settled,
-      })
+      .where('m.state = :queued', { queued: WhatsappMessageState.QUEUED })
       .orderBy('m.created_at', 'ASC')
       .limit(limit);
+    // QR images are sent inline by the webhook that created them: give that a moment first.
+    // Invitations have no inline sender, so a queue trigger sends them at once (claims are
+    // conditional either way, so a race only wastes a query).
     if (which === 'others')
-      query.andWhere('m.kind <> :invitation', {
+      query.andWhere('m.kind <> :invitation AND m.updated_at < :settled', {
         invitation: WhatsappMessageKind.INVITATION,
+        settled,
       });
     else
       query

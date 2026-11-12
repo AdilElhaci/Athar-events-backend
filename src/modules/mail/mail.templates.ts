@@ -6,7 +6,8 @@ export interface MailMessage {
     | 'password_changed'
     | 'admin_invite'
     | 'admin_promoted'
-    | 'contact_message';
+    | 'contact_message'
+    | 'ops_alert';
   subject: string;
   text: string;
   html: string;
@@ -23,13 +24,20 @@ const escapeHtml = (value: string) =>
       ] ?? c,
   );
 
-function layout(title: string, bodyHtml: string): string {
+const DEFAULT_FOOTER =
+  'إذا لم تطلب هذه الرسالة فتجاهلها، ولن يتغير شيء في حسابك.';
+
+function layout(
+  title: string,
+  bodyHtml: string,
+  footer = DEFAULT_FOOTER,
+): string {
   return `<!doctype html><html lang="ar" dir="rtl"><body style="margin:0;background:#f7f2ea;font-family:Tahoma,Arial,sans-serif;color:#1e2a2c">
 <div style="max-width:520px;margin:0 auto;padding:32px 20px">
 <p style="font-size:20px;font-weight:bold;color:#1f4d45;margin:0 0 24px">${BRAND}</p>
 <div style="background:#fffdf9;border:1px solid #e3dccf;border-radius:16px;padding:24px">
 <h1 style="font-size:18px;margin:0 0 16px">${escapeHtml(title)}</h1>${bodyHtml}</div>
-<p style="font-size:12px;color:#52615b;margin-top:16px">إذا لم تطلب هذه الرسالة فتجاهلها، ولن يتغير شيء في حسابك.</p>
+<p style="font-size:12px;color:#52615b;margin-top:16px">${escapeHtml(footer)}</p>
 </div></body></html>`;
 }
 
@@ -139,6 +147,28 @@ export function contactMessageMail(input: {
       `<p><strong>الاسم:</strong> ${escapeHtml(input.name)}</p>
 <p><strong>الجوال:</strong> <span dir="ltr">${escapeHtml(phone)}</span></p>
 <p style="white-space:pre-wrap">${escapeHtml(input.subject)}</p>`,
+    ),
+  };
+}
+
+/** Operations alerts for the team (counts and reference codes only, never personal data). */
+export function opsAlertMail(
+  alerts: { title: string; detail: string }[],
+): MailMessage {
+  const title = `تنبيهات التشغيل (${alerts.length})`;
+  return {
+    kind: 'ops_alert',
+    subject: `${BRAND} — ${title}`,
+    text: alerts.map((a) => `- ${a.title}: ${a.detail}`).join('\n'),
+    html: layout(
+      title,
+      `<ul style="padding-inline-start:20px;margin:0">${alerts
+        .map(
+          (a) =>
+            `<li style="margin-bottom:12px"><strong>${escapeHtml(a.title)}</strong><br>${escapeHtml(a.detail)}</li>`,
+        )
+        .join('')}</ul>`,
+      'يصل هذا التنبيه كل 6 ساعات على الأكثر ما دامت المشكلة قائمة. الإجراء لكل تنبيه في دليل التشغيل.',
     ),
   };
 }

@@ -8,6 +8,7 @@ import {
   notFound,
   unprocessable,
 } from '../../shared/exceptions/app.exception';
+import { WhatsappQueue } from './whatsapp/whatsapp-queue.service';
 import { AdminAction } from '../admin-actions/admin-action.entity';
 import {
   Event,
@@ -65,6 +66,7 @@ export class InvitationsService {
     private readonly contents: Repository<InvitationContent>,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService<EnvironmentVariables, true>,
+    private readonly queue: WhatsappQueue,
   ) {}
 
   private get templateName(): string {
@@ -217,7 +219,7 @@ export class InvitationsService {
     eventId: string,
     sendAt: Date,
   ): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
+    const version = await this.dataSource.transaction(async (manager) => {
       const event = await lockEvent(manager, eventId);
       if (isClosed(event)) throw conflict('events.closed');
       if (STARTED.includes(event.campaignStatus))
@@ -247,7 +249,10 @@ export class InvitationsService {
         previous: event.sendAt?.toISOString() ?? null,
         scheduleVersion: event.scheduleVersion + 1,
       });
+      return event.scheduleVersion + 1;
     });
+    // After the commit, so the job never runs before the schedule exists (D-09).
+    await this.queue.scheduleStart(eventId, version, sendAt);
   }
 
   /** Back to "approved, not scheduled" before sending starts; reopens content and list edits. */
@@ -322,6 +327,7 @@ export class InvitationsService {
         queued: await queuedInvitations(manager, eventId),
       });
     });
+    await this.queue.trigger('campaign.resume');
   }
 
   private preconditions(event: Event): CampaignPreconditions {

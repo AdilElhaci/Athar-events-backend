@@ -72,7 +72,7 @@ AC-03-5, AC-03-6, AC-04-4, AC-06-1 to AC-06-6, AC-08-3, AC-08-4.
 ## 6. Technical design
 
 - Module `invitations`: `whatsapp.client.ts` (Graph API, media upload), `invitation-content.service.ts`, `campaign.service.ts`, `campaign-sender.service.ts`, `whatsapp-webhook.controller.ts`, `whatsapp-webhook.service.ts`, `rsvp.service.ts`, `replacement.service.ts`, `processors/whatsapp.processor.ts` (jobs `send-chunk`, `apply-webhook`), scheduler jobs per [operations](../architecture/operations.md#scheduled-jobs-app_rolescheduler).
-- Queue `whatsapp` (BullMQ), job ids `send-chunk:<eventId>:<scheduleVersion>` for natural dedupe.
+- Queue `whatsapp` (BullMQ, T-P3-05): jobs carry no data and run one sending pass under the Redis lock. Job ids: `sweep` (triggers coalesce while one waits) and `due:<eventId>:<scheduleVersion>` (delayed to `send_at`). Queued after commit by schedule, resume, replacement send and resend; the 30 s sweeper is the backstop. Queued invitations are sent at once; QR images keep a 10 s settle window for the webhook's inline send.
 - Tables: `invitation_contents`, `whatsapp_messages`, `whatsapp_inbound`, `webhook_receipts`, `guests`.
 - Frontend: SCR-13 (owner overview and counts), SCR-15 (approval), SCR-23 (admin campaign tab), SCR-24 (replacements), SCR-25 (message log).
 

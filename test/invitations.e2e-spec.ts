@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { WhatsappQueue } from '../src/modules/invitations/whatsapp/whatsapp-queue.service';
 import { configureApp } from '../src/app.setup';
 import { AdminAction } from '../src/modules/admin-actions/admin-action.entity';
 import { AdminProvisioningService } from '../src/modules/auth/services/admin-provisioning.service';
@@ -357,7 +358,11 @@ describe('Invitation approval and scheduling (e2e)', () => {
         .body.code,
     ).toBe('campaign.send_after_event');
 
+    const start = jest.spyOn(app.get(WhatsappQueue), 'scheduleStart');
     const ok = await schedule(event.id, sendAt).expect(200);
+    // T-P3-05: a delayed pass at send_at, after the commit.
+    expect(start).toHaveBeenCalledWith(event.id, 1, sendAt);
+    start.mockRestore();
     expect(ok.body.data).toMatchObject({
       campaignStatus: 'SCHEDULED',
       stage: 'scheduled',
@@ -432,9 +437,11 @@ describe('Invitation approval and scheduling (e2e)', () => {
       .send({})
       .expect(403);
 
+    const trigger = jest.spyOn(app.get(WhatsappQueue), 'trigger');
     const paused = await pause()
       .send({ reason: 'طلب صاحب المناسبة' })
       .expect(200);
+    expect(trigger).not.toHaveBeenCalled();
     expect(paused.body.data.campaignStatus).toBe('PAUSED');
     expect((await reload(event.id)).scheduleVersion).toBe(
       event.scheduleVersion,
@@ -444,6 +451,8 @@ describe('Invitation approval and scheduling (e2e)', () => {
     );
 
     const resumed = await resume().send({}).expect(200);
+    expect(trigger).toHaveBeenCalledWith('campaign.resume');
+    trigger.mockRestore();
     expect(resumed.body.data.campaignStatus).toBe('SENDING');
     expect((await resume().send({}).expect(409)).body.code).toBe(
       'campaign.not_paused',

@@ -30,6 +30,7 @@ import {
   WhatsappMessage,
   WhatsappMessageKind,
 } from './entities/whatsapp-message.entity';
+import { WhatsappQueue } from './whatsapp/whatsapp-queue.service';
 import { invitationKey } from './whatsapp/whatsapp-sender.service';
 
 /** Replacements go out only once the campaign has started (they are not scheduled, SP-04). */
@@ -47,7 +48,10 @@ const STARTED = [
  */
 @Injectable()
 export class ReplacementsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly queue: WhatsappQueue,
+  ) {}
 
   /** SCR-24. */
   async view(eventId: string): Promise<ReplacementsView> {
@@ -102,13 +106,24 @@ export class ReplacementsService {
     };
   }
 
-  send(
+  async send(
     actorUserId: string,
     eventId: string,
     request: { count?: number; guestIds?: string[] },
   ): Promise<SendReplacementsResult> {
     if (!request.count === !request.guestIds)
       throw unprocessable('replacements.count_or_guests');
+    const result = await this.transactionalSend(actorUserId, eventId, request);
+    // Replacements are not scheduled: send as soon as the intents are committed (SP-04).
+    await this.queue.trigger('replacements.send');
+    return result;
+  }
+
+  private transactionalSend(
+    actorUserId: string,
+    eventId: string,
+    request: { count?: number; guestIds?: string[] },
+  ): Promise<SendReplacementsResult> {
     return this.dataSource.transaction(async (manager) => {
       const event = await manager.findOne(Event, {
         where: { id: eventId },

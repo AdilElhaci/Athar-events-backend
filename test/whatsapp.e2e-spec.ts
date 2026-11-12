@@ -39,6 +39,7 @@ import {
   TracerError,
   WhatsappSenderService,
 } from '../src/modules/invitations/whatsapp/whatsapp-sender.service';
+import { CampaignSenderService } from '../src/modules/invitations/whatsapp/campaign-sender.service';
 import { WhatsappSweeperJob } from '../src/modules/invitations/whatsapp/whatsapp-sweeper.job';
 import { MailService } from '../src/modules/mail/mail.service';
 import { WebhookReceipt } from '../src/modules/payments/entities/webhook-receipt.entity';
@@ -708,8 +709,8 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
 
     it('cancels what is still queued when the event starts mid-campaign', async () => {
       const eventId = await dueCampaign();
-      // Intents exist but were not sent yet (settle window), then the event starts.
-      await app.get(WhatsappSweeperJob).run(60_000);
+      // Intents exist but were not sent yet, then the event starts.
+      await app.get(CampaignSenderService).startDue(); // intents only
       expect(
         await messages().countBy({
           eventId,
@@ -739,7 +740,7 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
 
     it('pause holds queued invitations, a QR still goes out, resume sends the rest', async () => {
       const eventId = await dueCampaign();
-      await app.get(WhatsappSweeperJob).run(60_000); // queue the campaign, send nothing
+      await app.get(CampaignSenderService).startDue(); // queue the campaign, send nothing
       await events().update(eventId, {
         campaignStatus: EventCampaignStatus.PAUSED,
       });
@@ -789,7 +790,7 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
 
     it('a pause that lands after the claim puts the intent back without an attempt', async () => {
       const eventId = await dueCampaign();
-      await app.get(WhatsappSweeperJob).run(60_000);
+      await app.get(CampaignSenderService).startDue(); // intents only
       const [intent] = await messages().findBy({
         eventId,
         kind: WhatsappMessageKind.INVITATION,
@@ -844,7 +845,7 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
 
     it('a queued QR image goes out before queued campaign invitations', async () => {
       const eventId = await dueCampaign();
-      await app.get(WhatsappSweeperJob).run(60_000); // queue the campaign, send nothing
+      await app.get(CampaignSenderService).startDue(); // queue the campaign, send nothing
       const accepted = await createGuest({ phone: '+966500000009' });
       await db
         .getRepository(Guest)

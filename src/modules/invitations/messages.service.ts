@@ -1,3 +1,4 @@
+import { WhatsappQueue } from './whatsapp/whatsapp-queue.service';
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import {
@@ -41,7 +42,10 @@ const NEEDS_ACTION = [
  */
 @Injectable()
 export class MessagesService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly queue: WhatsappQueue,
+  ) {}
 
   async list(
     eventId: string,
@@ -85,8 +89,24 @@ export class MessagesService {
     };
   }
 
-  /** Returns the resolved row and, for a resend, the id of the new intent (sent by the sweeper). */
-  resolve(
+  /** Returns the resolved row and, for a resend, the id of the new intent (sent by the queue). */
+  async resolve(
+    actorUserId: string,
+    messageId: string,
+    resolution: Resolution,
+    reason: string,
+  ): Promise<{ message: MessageView; resendId: string | null }> {
+    const result = await this.transactionalResolve(
+      actorUserId,
+      messageId,
+      resolution,
+      reason,
+    );
+    if (result.resendId) await this.queue.trigger('message.resend');
+    return result;
+  }
+
+  private transactionalResolve(
     actorUserId: string,
     messageId: string,
     resolution: Resolution,

@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { WhatsappQueue } from '../src/modules/invitations/whatsapp/whatsapp-queue.service';
 import { configureApp } from '../src/app.setup';
 import { AdminAction } from '../src/modules/admin-actions/admin-action.entity';
 import { AdminProvisioningService } from '../src/modules/auth/services/admin-provisioning.service';
@@ -242,7 +243,10 @@ describe('Replacements (e2e, SP-04 / D-16)', () => {
 
   it('sends one replacement for the oldest decline, locks it, and invites at once', async () => {
     const { event, a, b, r1 } = await campaign();
+    const trigger = jest.spyOn(app.get(WhatsappQueue), 'trigger');
     const res = await send(event.id, { count: 1 }).expect(200);
+    expect(trigger).toHaveBeenCalledWith('replacements.send');
+    trigger.mockRestore();
     expect(res.body.data.extras).toEqual({ cap: 2, used: 1, available: 1 });
     expect(res.body.data.allocated).toHaveLength(1);
     expect(res.body.data.allocated[0]).toMatchObject({

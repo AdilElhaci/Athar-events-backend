@@ -20,6 +20,7 @@ import { AdminWhatsappTemplatesController } from './whatsapp/admin-whatsapp-temp
 import { HttpWhatsappClient, WhatsappClient } from './whatsapp/whatsapp.client';
 import { CampaignSenderService } from './whatsapp/campaign-sender.service';
 import { WhatsappSenderService } from './whatsapp/whatsapp-sender.service';
+import { WhatsappQueue } from './whatsapp/whatsapp-queue.service';
 import { WhatsappSweeperJob } from './whatsapp/whatsapp-sweeper.job';
 import { WhatsappWebhookController } from './whatsapp/whatsapp-webhook.controller';
 import { WhatsappTemplatesService } from './whatsapp/whatsapp-templates.service';
@@ -54,6 +55,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     CampaignSenderService,
     WhatsappWebhookService,
     WhatsappSweeperJob,
+    WhatsappQueue,
     WhatsappTemplatesService,
     MessagesService,
     ReplacementsService,

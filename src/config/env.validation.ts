@@ -12,6 +12,7 @@ import {
   Min,
   MinLength,
   validateSync,
+  IsEmail,
 } from 'class-validator';
 
 export enum NodeEnv {
@@ -206,6 +207,21 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(0)
   WHATSAPP_DAILY_INVITATION_LIMIT = 1000;
+
+  /**
+   * Comma-separated roles this process runs (D-09): `api` (HTTP), `worker` (BullMQ processors),
+   * `scheduler` (sweepers, reconciliation, alerts). One container runs all three by default.
+   */
+  @Matches(/^(api|worker|scheduler)(,(api|worker|scheduler))*$/)
+  PROCESS_ROLES = 'api,worker,scheduler';
+
+  /**
+   * Operations alerts (operations.md) are e-mailed here every 5 minutes while a condition holds,
+   * at most once every 6 hours per alert. Unset: alerts are only logged.
+   */
+  @IsOptional()
+  @IsEmail()
+  OPS_ALERT_EMAIL?: string;
 }
 
 export function validateEnv(
