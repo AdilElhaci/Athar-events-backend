@@ -36,7 +36,7 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | GET | `/articles/:slug` | public | `IArticle` | 404 for drafts and unknown slugs |
 | GET | `/articles/images/:id` | public | Image bytes | No JSON envelope; `Cache-Control: immutable` |
 | POST | `/contact` | public (CSRF header) | `null` | `{ name, phone, subject, website? }`; honeypot, 5 per IP per hour; stored and e-mailed ([D-34](../product/decisions.md)) |
-| GET | `/public/invitations/:token` | public (bearer token in path) | `{ guestName, eventName, startsAt, venueName, venueMapUrl, status: 'VALID' \| 'ADMITTED' \| 'REVOKED' \| 'CLOSED' }` | `Cache-Control: no-store`; never checks in; 404 for unknown tokens; rate-limited |
+| GET | `/public/invitations/:token` | public (bearer token in path) | `{ guestName, eventName, startsAt, venueName, venueMapUrl, status: 'VALID' \| 'ADMITTED' \| 'CLOSED', checkedInAt, qrSvg }` | **Implemented.** `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`; never checks in; 404 for unknown, revoked or declined codes (a revoked hash is gone, so there is no `REVOKED`); `qrSvg` is null once closed; 30/min per IP |
 
 ## Owner — events — [SP-02](../specs/SP-02-packages-events-payments.md)
 
@@ -60,8 +60,8 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 
 | Method | Path | Auth | Request | Response `data` | Notes / codes |
 | --- | --- | --- | --- | --- | --- |
-| GET | `/scan/events` | owner | — | `{ id, name, startsAt, admissionOpensAt, admissionClosesAt, isOpen }[]` | Owner's paid events whose window is open or opens within 24 h |
-| POST | `/scan/events/:eventId/check-ins` | owner | `{ token }` (raw token or the full QR URL) | `{ result, guestName?, checkedInAt?, admittedCount }` | `result ∈ ADMITTED, ALREADY_ADMITTED, INVALID, NOT_ACCEPTED, WRONG_EVENT, WINDOW_CLOSED`; always 200 for scan outcomes; 403/404 for authorization; rate-limited per user |
+| GET | `/scan/events` | owner | — | `{ id, name, startsAt, admissionOpensAt, admissionClosesAt, isOpen }[]` | **Implemented.** Owner's paid, live events whose window is open or opens within 24 h |
+| POST | `/scan/events/:eventId/check-ins` | owner | `{ token }` (raw token or the full QR URL) | `{ result, guestName?, checkedInAt?, admittedCount }` | `result ∈ ADMITTED, ALREADY_ADMITTED, INVALID, NOT_ACCEPTED, WRONG_EVENT, WINDOW_CLOSED`; **Implemented.** Always 200 for scan outcomes; 403 for admins, 404 for another owner's event; 120/min per user (429) |
 | GET | `/scan/events/:eventId/stats` | owner | — | `{ admitted, accepted }` | |
 
 ## Admin — [SP-02](../specs/SP-02-packages-events-payments.md), [SP-03](../specs/SP-03-guests-and-import.md), [SP-04](../specs/SP-04-whatsapp-campaigns-rsvp-replacements.md)

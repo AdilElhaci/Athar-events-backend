@@ -19,3 +19,7 @@ export const renderQrPng = (url: string): Promise<Buffer> =>
     margin: 4,
     width: 640,
   });
+
+/** The same URL as an SVG for the guest page, so the browser needs no QR library. */
+export const renderQrSvg = (url: string): Promise<string> =>
+  QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });

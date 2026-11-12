@@ -48,7 +48,8 @@ AC-07-1 to AC-07-6, plus: an admin or another owner calling the scan endpoint ge
 ## 6. Technical design
 
 - Module `checkin`: `scan.controller.ts` (`/scan/*`, `@RequireUserType(OWNER)` + ownership), `public-invitations.controller.ts`, `checkin.service.ts`, `qr.service.ts` (issue, hash, render).
-- Library: `qrcode` (server PNG); frontend scanning with a maintained browser QR decoder (e.g. `@zxing/browser` or `qr-scanner`), chosen in P1 after a real-device test on iPhone Safari and Android Chrome.
+- Library: `qrcode` (server PNG for WhatsApp, SVG for the guest page); frontend scanning with `qr-scanner` 1.4.2 (owner's choice, 2026-11-12; real-device test on iPhone Safari and Android Chrome still due, T-P4-04).
+- *Implementation (2026-11-12):* `checkin.service.ts`, `scan.controller.ts`, `public-invitations.controller.ts`. The guest page receives the QR as server-rendered SVG, so the browser renders no QR itself. Unknown, revoked and declined codes all answer 404 on the guest page.
 - Frontend: `(Scanner)/scan/page.tsx` (SCR-30), `(Scanner)/scan/[eventId]/page.tsx` (SCR-31, SCR-32), `(Guest)/i/[token]/page.tsx` (SCR-40).
 
 ## 7. Security, permissions, audit
