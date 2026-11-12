@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { AdminPaymentsController } from './admin-payments.controller';
+import { AdminPaymentsService } from './admin-payments.service';
 import { Event } from '../events/entities/event.entity';
 import { PaymentAttempt } from './entities/payment-attempt.entity';
 import { WebhookReceipt } from './entities/webhook-receipt.entity';
@@ -19,13 +21,18 @@ import { PaymentsService } from './payments.service';
     TypeOrmModule.forFeature([PaymentAttempt, WebhookReceipt, Event]),
     AuthModule,
   ],
-  controllers: [EventPaymentsController, MoyasarWebhookController],
+  controllers: [
+    EventPaymentsController,
+    MoyasarWebhookController,
+    AdminPaymentsController,
+  ],
   providers: [
     { provide: MoyasarClient, useClass: HttpMoyasarClient },
     PaymentApplyService,
     PaymentsService,
     MoyasarWebhookService,
     PaymentsReconcileJob,
+    AdminPaymentsService,
   ],
 })
 export class PaymentsModule {}

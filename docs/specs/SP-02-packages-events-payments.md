@@ -30,7 +30,9 @@ Package fields; event fields (name, `startsAt` in Asia/Riyadh, venue name, map U
 
 **Return page.** `/dashboard/events/:id/payment?attemptId` (Moyasar's `success_url`; inside the dashboard so the session is already there) polls `payment-status` every 2 s for up to 30 s, then shows "we will confirm shortly" with a link to the event.
 
-**Refund marking.** Admin `mark-refunded`: event `REFUNDED` + `CANCELLED`, campaign cancelled, QR codes revoked; audited.
+**Refund marking.** Admin `mark-refunded` (paid events only, reason 3–300 characters): event `REFUNDED` + `CANCELLED`, campaign `CANCELLED` unless already `SENT`, queued messages `CANCELLED` (`event_refunded`), every QR code revoked (`qr_token_hash` cleared), the paid attempt's `metadata.refundedAt` set; one transaction under the event lock; audited `event.refunded` with counts ([OQ-16](../product/open-questions.md) default). The money itself is returned by hand in the Moyasar dashboard first. *Implemented 2026-11-12 (`T-P2-09`).*
+
+**Payments taken but not applied.** An attempt `FAILED` with `duplicate_payment`, `event_not_payable` or `mismatch` holds money at Moyasar: it is flagged `refundNeeded` on SCR-26 and counted in the admin dashboard alert `paymentsToRefund` until an admin records the manual refund (`refund-done`, sets `metadata.refundedAt`, audited `payment.refund_done`; the event is untouched). Admins can also force a Moyasar fetch of a `PENDING` attempt (`reconcile`, audited `payment.reconcile`; 503 `payments.provider_unavailable` on outage). *Implemented 2026-11-12 (`T-P2-09`).*
 
 ## 5. Acceptance criteria
 

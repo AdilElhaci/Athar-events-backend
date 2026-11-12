@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +18,7 @@ import { CsrfGuard } from '../auth/guards/csrf.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequireUserType, UserTypeGuard } from '../auth/guards/user-type.guard';
 import type { AuthenticatedUser } from '../auth/types/auth.types';
+import { RefundReasonDto } from '../payments/dto/admin-payment.dto';
 import { UserType } from '../users/entities/user.entity';
 import { AdminEventsService } from './admin-events.service';
 import {
@@ -72,5 +75,25 @@ export class AdminEventsController {
   ) {
     const [event, stage] = await this.events.correct(user.id, id, dto);
     return withMessage(toAdminEventView(event, stage), 'event.corrected');
+  }
+
+  @Post('events/:id/mark-refunded')
+  @HttpCode(200)
+  @UseGuards(CsrfGuard)
+  @ApiOperation({
+    summary:
+      'Records a manual Moyasar refund: cancels the event and revokes QR codes.',
+  })
+  async markRefunded(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RefundReasonDto,
+  ) {
+    const [event, stage] = await this.events.markRefunded(
+      user.id,
+      id,
+      dto.reason,
+    );
+    return withMessage(toAdminEventView(event, stage), 'events.refunded');
   }
 }

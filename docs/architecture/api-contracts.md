@@ -68,7 +68,7 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 
 | Method | Path | Request | Response `data` | Notes / codes |
 | --- | --- | --- | --- | --- |
-| GET | `/admin/dashboard` | — | `{ stages: Record<stage, number>, alerts: { overdueCampaigns } }` | **Implemented** (T-P2-06). `overdueCampaigns` follows the [operations alert](operations.md). Alerts for unknown sends and payments to reconcile are added with their tables (T-P3-07, T-P2-08) |
+| GET | `/admin/dashboard` | — | `{ stages: Record<stage, number>, alerts: { overdueCampaigns, paymentsToRefund } }` | **Implemented** (T-P2-06). `overdueCampaigns` follows the [operations alert](operations.md); `paymentsToRefund` counts payments taken but not applied and not yet refunded (T-P2-09). An unknown-sends alert is still to come |
 | GET | `/admin/events` | `?stage&needsAction&page&limit&search` | `Paginated<IAdminEventListItem>` | **Implemented.** `stage ∈ awaiting_payment, awaiting_list, awaiting_approval, scheduled, sending, needs_attention, done`. `needsAction=true` keeps `awaiting_list`, `awaiting_approval`, `needs_attention`, soonest first (SCR-20); otherwise newest date first. Search matches event name, reference or owner name. `IAdminEventListItem = { id, referenceCode, name, startsAt, ownerName, packageName, stage, nextAction }` |
 | GET | `/admin/events/:id` | — | `IAdminEvent` | **Implemented.** `IEvent` plus `stage` and `owner { id, name, email, phone }` |
 | PATCH | `/admin/events/:id` | changed fields of `name, startsAt, venueName, venueMapUrl, requestedSendAt, admissionOpensAt, admissionClosesAt`, plus `reason` (3–300) | `IAdminEvent` | **Implemented.** Audited as `event.corrected`; a corrected date moves the window with it; changing name, date or venue moves an approved invitation back to `AWAITING_OWNER` until sending starts ([D-15](../product/decisions.md)). 409 `events.closed`; 422 `events.send_after_start`, `events.send_in_past`, `events.starts_in_past`, `events.admission_window_invalid` |
@@ -78,7 +78,7 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | POST | `/admin/events/:id/invitation/override` | `{ contentId, reason }` | same as GET | **Implemented.** Admin approval with a reason (D-40); audited `invitation.override` |
 | POST | `/admin/events/:id/schedule` | `{ sendAt }` | `IAdminEvent` | **Implemented.** 422 `campaign.not_paid`, `campaign.list_not_ready`, `campaign.not_approved`, `campaign.template_not_approved`, `events.send_in_past`, `campaign.send_after_event`; 409 `campaign.already_started`; reschedule allowed; audited `campaign.schedule` |
 | POST | `/admin/events/:id/pause` / `/resume` / `/cancel-campaign` | `{ reason? }` (resume: none) | `IAdminEvent` | **Implemented.** `cancel-campaign` for a scheduled event (back to `NOT_SCHEDULED`, `send_at` cleared, increments `schedule_version`). `pause`: `SENDING` → `PAUSED`, 409 `campaign.not_sending`. `resume`: `PAUSED` → `SENDING`, 409 `campaign.not_paused`, `events.closed`, `campaign.event_started`. Pause/resume keep `schedule_version`; all audited |
-| POST | `/admin/events/:id/mark-refunded` | `{ reason }` | `IAdminEvent` | Cancels event; revokes QR codes ([OQ-16](../product/open-questions.md)) |
+| POST | `/admin/events/:id/mark-refunded` | `{ reason }` (3–300) | `IAdminEvent` | Paid events only (409 `events.not_paid`); cancels the event, its campaign (unless `SENT`) and queued messages; revokes QR codes ([OQ-16](../product/open-questions.md)); audited `event.refunded` |
 | GET | `/admin/events/:id/guests` | `?page&limit&search&kind&rsvp` | `Paginated<IAdminGuest> & { counts: { initial, reserve, allowance, extraMargin } }` | **Implemented.** Full phone; search by name or phone digits. `delivery` filter arrives with sending (P3/P4) |
 | POST | `/admin/events/:id/guests` | `{ name, phone, kind, note? }` | `IAdminGuest` | **Implemented.** 409 `guests.phone_duplicate`, 422 `guests.allowance_exceeded` / `guests.reserve_exceeded` / `guests.event_unpaid` / `imports.row.*`; 409 `guests.list_locked` once sending is scheduled |
 | PATCH / DELETE | `/admin/events/:id/guests/:guestId` | fields | `IAdminGuest` / `null` | **Implemented.** 409 `guests.locked_after_allocation`; delete is soft and frees the number |
@@ -105,9 +105,11 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | PATCH | `/admin/articles/:id` | article fields | `IAdminArticle` | Audited; same errors; `published_at` is set by the server on first publish |
 | DELETE | `/admin/articles/:id` | — | `null` | Permanent; removes the uploaded cover; audited |
 | POST | `/admin/articles/images` | multipart `file` | `{ url }` | JPEG, PNG or WebP by content, 2 MB at most (413 above it); not audited |
-| GET | `/admin/payments` | `?status&page&limit&search` | `Paginated<IPayment>` | |
-| POST | `/admin/payments/:id/reconcile` | — | `IPayment` | Forces a Moyasar fetch |
-| GET | `/admin/actions` | `?eventId&actorId&action&page&limit` | `Paginated<IAdminAction>` | |
+| GET | `/admin/payments` | `?status&needsAction&page&limit&search` | `Paginated<IAdminPayment>` | Newest first; with event and owner; `needsAction` = taken but not applied and not yet refunded (`refundNeeded`); search matches event name, reference, owner name or e-mail, Moyasar ids |
+| POST | `/admin/payments/:id/reconcile` | — | `IAdminPayment` | `PENDING` only (409 `payments.not_pending`); fetches from Moyasar now (503 `payments.provider_unavailable`); audited |
+| POST | `/admin/payments/:id/refund-done` | `{ reason }` (3–300) | `IAdminPayment` | Records the manual refund of a payment taken but not applied (409 `payments.no_refund_needed`); the event is untouched; audited |
+| GET | `/admin/actions` | `?eventId&actorId&action&page&limit` | `Paginated<IAdminAction>` | Newest first, with the actor (null for the server CLI); `eventId` also matches actions whose summary names the event (messages, payments) |
+| GET | `/admin/actions/names` | — | `string[]` | Action names present in the log (filter) |
 
 ## Provider webhooks — [integrations](integrations.md)
 

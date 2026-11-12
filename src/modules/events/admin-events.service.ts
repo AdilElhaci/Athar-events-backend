@@ -13,10 +13,21 @@ import {
   AdminEventsQueryDto,
   AdminUpdateEventDto,
 } from './dto/admin-event.dto';
+import { Guest } from '../guests/entities/guest.entity';
+import {
+  WhatsappMessage,
+  WhatsappMessageState,
+} from '../invitations/entities/whatsapp-message.entity';
+import {
+  PaymentAttempt,
+  PaymentAttemptStatus,
+} from '../payments/entities/payment-attempt.entity';
+import { REFUND_NEEDED_SQL } from '../payments/admin-payments.service';
 import {
   Event,
   EventApprovalStatus,
   EventCampaignStatus,
+  EventPaymentStatus,
   EventStatus,
 } from './entities/event.entity';
 import {
@@ -46,7 +57,7 @@ export class AdminEventsService {
   ) {}
 
   async dashboard(): Promise<AdminDashboardView> {
-    const [rows, overdueCampaigns] = await Promise.all([
+    const [rows, overdueCampaigns, paymentsToRefund] = await Promise.all([
       this.events
         .createQueryBuilder('e')
         .select(STAGE_SQL, 'stage')
@@ -57,12 +68,17 @@ export class AdminEventsService {
         campaignStatus: EventCampaignStatus.SCHEDULED,
         sendAt: LessThan(new Date(Date.now() - OVERDUE_AFTER_MS)),
       }),
+      this.dataSource
+        .getRepository(PaymentAttempt)
+        .createQueryBuilder('p')
+        .where(REFUND_NEEDED_SQL)
+        .getCount(),
     ]);
     const stages = Object.fromEntries(
       EVENT_STAGES.map((stage) => [stage, 0]),
     ) as Record<EventStage, number>;
     for (const { stage, count } of rows) stages[stage] = count;
-    return { stages, alerts: { overdueCampaigns } };
+    return { stages, alerts: { overdueCampaigns, paymentsToRefund } };
   }
 
   async list({
@@ -185,6 +201,79 @@ export class AdminEventsService {
         targetType: 'event',
         targetId: id,
         summary: { fields, reason, approvalReset },
+      });
+    });
+    return this.get(id);
+  }
+
+  /**
+   * AC-05-5: the money was returned by hand in the Moyasar dashboard. The event is cancelled with
+   * its campaign, queued messages are cancelled and every QR code is revoked (OQ-16 default).
+   */
+  async markRefunded(
+    actorUserId: string,
+    id: string,
+    reason: string,
+  ): Promise<readonly [Event, EventStage]> {
+    await this.dataSource.transaction(async (manager) => {
+      const event = await manager.findOne(Event, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!event) throw notFound();
+      if (event.paymentStatus !== EventPaymentStatus.PAID)
+        throw conflict('events.not_paid');
+
+      const previousCampaign = event.campaignStatus;
+      event.paymentStatus = EventPaymentStatus.REFUNDED;
+      event.status = EventStatus.CANCELLED;
+      // A finished campaign keeps its history; anything else stops here.
+      if (event.campaignStatus !== EventCampaignStatus.SENT)
+        event.campaignStatus = EventCampaignStatus.CANCELLED;
+      await manager.save(event);
+
+      const messages = await manager.update(
+        WhatsappMessage,
+        { eventId: id, state: WhatsappMessageState.QUEUED },
+        {
+          state: WhatsappMessageState.CANCELLED,
+          lastErrorCode: 'event_refunded',
+        },
+      );
+      const qr = await manager
+        .createQueryBuilder()
+        .update(Guest)
+        .set({ qrTokenHash: null })
+        .where('event_id = :id AND qr_token_hash IS NOT NULL', { id })
+        .execute();
+      const paid = await manager.findOne(PaymentAttempt, {
+        where: { eventId: id, status: PaymentAttemptStatus.PAID },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (paid)
+        await manager.update(
+          PaymentAttempt,
+          { id: paid.id },
+          {
+            metadata: {
+              ...paid.metadata,
+              refundedAt: new Date().toISOString(),
+            },
+          },
+        );
+
+      await manager.insert(AdminAction, {
+        actorUserId,
+        action: 'event.refunded',
+        targetType: 'event',
+        targetId: id,
+        summary: {
+          reason,
+          paymentAttemptId: paid?.id,
+          previousCampaign,
+          messagesCancelled: messages.affected ?? 0,
+          qrRevoked: qr.affected ?? 0,
+        },
       });
     });
     return this.get(id);

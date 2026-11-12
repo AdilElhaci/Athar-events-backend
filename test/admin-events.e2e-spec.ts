@@ -232,7 +232,7 @@ describe('Admin events (e2e)', () => {
         needs_attention: 0,
         done: 1,
       },
-      alerts: { overdueCampaigns: 1 },
+      alerts: { overdueCampaigns: 1, paymentsToRefund: 0 },
     });
   });
 

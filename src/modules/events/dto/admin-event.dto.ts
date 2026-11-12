@@ -72,7 +72,7 @@ export interface AdminEventView extends EventView {
 
 export interface AdminDashboardView {
   stages: Record<EventStage, number>;
-  alerts: { overdueCampaigns: number };
+  alerts: { overdueCampaigns: number; paymentsToRefund: number };
 }
 
 export const toAdminEventListItem = (

@@ -132,6 +132,14 @@ export const MESSAGES = {
     'مرّ أكثر من 23 ساعة على رد الضيف؛ يُرسل الرمز بقالب معتمد (غير متاح بعد).',
   'messages.kind_unsupported': 'لا يمكن إعادة إرسال هذا النوع من الرسائل.',
   'messages.resolved': 'تمت معالجة الرسالة.',
+  'payments.not_pending': 'هذه الدفعة ليست معلّقة، فلا حاجة لمطابقتها.',
+  'payments.provider_unavailable':
+    'تعذّر الوصول إلى ميسّر الآن، حاول بعد قليل.',
+  'payments.reconciled': 'تمت مطابقة الدفعة مع ميسّر.',
+  'payments.no_refund_needed': 'هذه الدفعة لا تحتاج إلى استرجاع.',
+  'payments.refund_done': 'سُجّل استرجاع المبلغ.',
+  'events.not_paid': 'المناسبة غير مدفوعة، فلا يوجد ما يُسترجع.',
+  'events.refunded': 'سُجّل الاسترجاع وأُلغيت المناسبة.',
   'replacements.sent': 'أُرسلت دعوات البدلاء.',
   'replacements.count_or_guests':
     'حدد عدد البدلاء أو اختر الضيوف، وليس الاثنين.',
