@@ -86,9 +86,9 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | GET | `/admin/events/:id/guest-imports/:importId/rows` | `?result&page&limit` | `Paginated<IImportRow>` | **Implemented.** |
 | POST | `/admin/events/:id/guest-imports/:importId/apply` | — | `IGuestImport` with `counts.created`, `counts.skipped` | **Implemented.** Only `VALID` rows that still fit (re-checked under the event lock); 409 `imports.expired`; idempotent; audited `guests.import_apply` |
 | POST | `/admin/events/:id/replacements` | `{ count }` or `{ guestIds: string[] }` | `{ allocated: IAdminGuest[], extras }` | 422 `replacements.no_declines_available`, `replacements.margin_exhausted`, `replacements.no_reserves` |
-| POST | `/admin/guests/:guestId/qr/reissue` | `{ reason }` | `IAdminGuest` | Revokes the old QR, sends a new one by template |
-| GET | `/admin/events/:id/messages` | `?state&delivery&kind&page&limit` | `Paginated<IMessage>` | Message log |
-| POST | `/admin/messages/:messageId/resolve` | `{ resolution: 'MARK_SENT' \| 'MARK_FAILED' \| 'RESEND', reason }` | `IMessage` | Only for `UNKNOWN`/`FAILED` |
+| POST | `/admin/guests/:guestId/qr/reissue` | `{ reason }` | `IAdminGuest` | Revokes the old QR, sends a new one by template. Not built: needs the QR template (T-P3-09) |
+| GET | `/admin/events/:id/messages` | `?state&delivery&kind&page&limit` | `Paginated<IMessage>` | **Implemented** (also `needsAction=true`: `UNKNOWN`/`FAILED`, not resolved). Newest first; rows carry guest name and phone |
+| POST | `/admin/messages/:messageId/resolve` | `{ resolution: 'MARK_SENT' \| 'MARK_FAILED' \| 'RESEND', reason }` | `{ message: IMessage, resendId }` | **Implemented.** `MARK_SENT`/`MARK_FAILED` for `UNKNOWN` only, `RESEND` for `UNKNOWN`/`FAILED`; 409 `messages.not_resolvable`, `messages.resolution_invalid`, `messages.guest_replied`, `messages.already_sent`, `messages.event_started`, `messages.guest_gone`, `messages.guest_not_accepted`; 422 `messages.window_closed` (QR after 23 h), `messages.kind_unsupported`; audited |
 | GET / POST / PATCH | `/admin/packages`, `/admin/packages/:id` | package fields | `IPackage` | `GET` is paginated and includes inactive packages. No delete: deactivate |
 | GET | `/admin/users` | `?type&status&search&page&limit` | `Paginated<IAdminUser>` | |
 | PATCH | `/admin/users/:id/status` | `{ status }` | `IAdminUser` | Cannot suspend yourself |

@@ -40,6 +40,15 @@ export class TracerError extends Error {}
 
 export const invitationKey = (guestId: string, contentVersion: number) =>
   `invitation:${guestId}:${contentVersion}`;
+/** The campaign key, or an admin resend of it (`…:r<n>`, SCR-25). */
+export const isInvitationKeyFor = (
+  key: string,
+  guestId: string,
+  contentVersion: number,
+) => {
+  const base = invitationKey(guestId, contentVersion);
+  return key === base || new RegExp(`^${base}:r\\d+$`).test(key);
+};
 export const qrKey = (guestId: string, qrVersion: number) =>
   `qr:${guestId}:${qrVersion}`;
 
@@ -268,7 +277,7 @@ export class WhatsappSenderService {
     // The key carries the content version: a newer approval must never go out under this intent.
     if (
       !content ||
-      message.logicalKey !== invitationKey(guest.id, content.version)
+      !isInvitationKeyFor(message.logicalKey, guest.id, content.version)
     )
       return { outcome: 'CANCELLED', code: 'not_approved' };
     return this.client.sendTemplate(guest.phone!, {

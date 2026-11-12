@@ -7,10 +7,12 @@ import { EventsModule } from '../events/events.module';
 import { Guest } from '../guests/entities/guest.entity';
 import { WebhookReceipt } from '../payments/entities/webhook-receipt.entity';
 import { AdminInvitationsController } from './admin-invitations.controller';
+import { AdminMessagesController } from './admin-messages.controller';
 import { InvitationContent } from './entities/invitation-content.entity';
 import { WhatsappInbound } from './entities/whatsapp-inbound.entity';
 import { WhatsappMessage } from './entities/whatsapp-message.entity';
 import { InvitationsService } from './invitations.service';
+import { MessagesService } from './messages.service';
 import { OwnerInvitationController } from './owner-invitation.controller';
 import { AdminWhatsappTemplatesController } from './whatsapp/admin-whatsapp-templates.controller';
 import { HttpWhatsappClient, WhatsappClient } from './whatsapp/whatsapp.client';
@@ -40,6 +42,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     OwnerInvitationController,
     WhatsappWebhookController,
     AdminWhatsappTemplatesController,
+    AdminMessagesController,
   ],
   providers: [
     InvitationsService,
@@ -49,6 +52,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     WhatsappWebhookService,
     WhatsappSweeperJob,
     WhatsappTemplatesService,
+    MessagesService,
   ],
 })
 export class InvitationsModule {}

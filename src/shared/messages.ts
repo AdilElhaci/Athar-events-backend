@@ -121,6 +121,17 @@ export const MESSAGES = {
   'campaign.not_sending': 'الإرسال ليس جارياً الآن.',
   'campaign.not_paused': 'الإرسال ليس موقوفاً.',
   'campaign.event_started': 'بدأت المناسبة، فلا يمكن استئناف الإرسال.',
+  'messages.not_resolvable': 'هذه الرسالة لا تحتاج إلى معالجة.',
+  'messages.resolution_invalid': 'الرسالة فشلت فعلاً؛ يمكن إعادة إرسالها فقط.',
+  'messages.event_started': 'بدأت المناسبة، فلا يمكن إعادة الإرسال.',
+  'messages.guest_gone': 'الضيف محذوف أو بلا رقم جوال.',
+  'messages.guest_replied': 'ردّ الضيف على الدعوة، فلا حاجة لإعادة إرسالها.',
+  'messages.guest_not_accepted': 'الضيف لم يقبل الدعوة، فلا يُرسل له رمز دخول.',
+  'messages.already_sent': 'لدى الضيف رسالة من النوع نفسه أُرسلت أو في الطريق.',
+  'messages.window_closed':
+    'مرّ أكثر من 23 ساعة على رد الضيف؛ يُرسل الرمز بقالب معتمد (غير متاح بعد).',
+  'messages.kind_unsupported': 'لا يمكن إعادة إرسال هذا النوع من الرسائل.',
+  'messages.resolved': 'تمت معالجة الرسالة.',
   'whatsapp.templates_unavailable':
     'تعذّر جلب قوالب واتساب من Meta الآن، حاول بعد قليل.',
   'whatsapp.not_configured':
