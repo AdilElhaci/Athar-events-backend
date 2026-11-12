@@ -16,7 +16,18 @@ import {
   EventPaymentStatus,
 } from '../src/modules/events/entities/event.entity';
 import { GuestImport } from '../src/modules/guests/entities/guest-import.entity';
-import { Guest } from '../src/modules/guests/entities/guest.entity';
+import {
+  Guest,
+  GuestAllocationStatus,
+  GuestKind,
+  GuestRsvp,
+} from '../src/modules/guests/entities/guest.entity';
+import {
+  WhatsappDeliveryStatus,
+  WhatsappMessage,
+  WhatsappMessageKind,
+  WhatsappMessageState,
+} from '../src/modules/invitations/entities/whatsapp-message.entity';
 import { MailService } from '../src/modules/mail/mail.service';
 import type { MailMessage } from '../src/modules/mail/mail.templates';
 import {
@@ -516,5 +527,97 @@ describe('Guests and import (e2e)', () => {
         'ملاحظة',
       ]);
     }
+  });
+
+  it('gives the owner summary counts, only for their own event (AC-03-6, AC-03-7)', async () => {
+    const event = await createEvent({
+      invitationAllowance: 10,
+      extraMargin: 2,
+    });
+    let seq = 0;
+    const seed = async (
+      guest: Partial<Guest>,
+      invitation?: {
+        state: WhatsappMessageState;
+        delivery?: WhatsappDeliveryStatus;
+      },
+    ) => {
+      const saved = await db.getRepository(Guest).save(
+        db.getRepository(Guest).create({
+          eventId: event.id,
+          name: 'ضيف',
+          phone: phone(100 + ++seq),
+          allocationStatus: GuestAllocationStatus.ALLOCATED,
+          ...guest,
+        }),
+      );
+      if (invitation)
+        await db.getRepository(WhatsappMessage).save(
+          db.getRepository(WhatsappMessage).create({
+            eventId: event.id,
+            guestId: saved.id,
+            kind: WhatsappMessageKind.INVITATION,
+            logicalKey: `invitation:${saved.id}:1`,
+            state: invitation.state,
+            deliveryStatus: invitation.delivery ?? WhatsappDeliveryStatus.SENT,
+          }),
+        );
+    };
+    const sent = (delivery: WhatsappDeliveryStatus) => ({
+      state: WhatsappMessageState.SENT,
+      delivery,
+    });
+
+    await seed(
+      { rsvp: GuestRsvp.ACCEPTED, checkedInAt: new Date() },
+      sent(WhatsappDeliveryStatus.READ),
+    );
+    await seed(
+      { rsvp: GuestRsvp.DECLINED },
+      sent(WhatsappDeliveryStatus.DELIVERED),
+    );
+    await seed({}, sent(WhatsappDeliveryStatus.SENT));
+    await seed({}, sent(WhatsappDeliveryStatus.FAILED));
+    // An ambiguous send the guest still answered counts as invited.
+    await seed(
+      { rsvp: GuestRsvp.ACCEPTED },
+      { state: WhatsappMessageState.UNKNOWN },
+    );
+    // Not reached yet: queued intent, or not allocated at all.
+    await seed({}, { state: WhatsappMessageState.QUEUED });
+    await seed({ allocationStatus: GuestAllocationStatus.NOT_ALLOCATED });
+    await seed({
+      kind: GuestKind.RESERVE,
+      allocationStatus: GuestAllocationStatus.NOT_ALLOCATED,
+    });
+
+    const res = await asOwner(
+      server().get(`/api/events/${event.id}/summary`),
+    ).expect(200);
+    expect(res.body.data).toEqual({
+      invited: 5,
+      delivered: 2,
+      read: 1,
+      accepted: 2,
+      declined: 1,
+      noReply: 2,
+      extras: { cap: 2, used: 0, available: 1 },
+      admitted: 1,
+      updatedAt: expect.any(String),
+    });
+
+    await asAdmin(server().get(`/api/events/${event.id}/summary`)).expect(403);
+    const stranger = await db.getRepository(User).save(
+      db.getRepository(User).create({
+        email: 'summary-stranger@example.com',
+        name: 'آخر',
+        type: UserType.OWNER,
+        status: UserStatus.ACTIVE,
+      }),
+    );
+    const foreign = await createEvent({ ownerId: stranger.id });
+    await asOwner(server().get(`/api/events/${foreign.id}/summary`)).expect(
+      404,
+    );
   });
 });

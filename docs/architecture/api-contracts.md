@@ -48,7 +48,7 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | PATCH | `/events/:id` | owner | editable fields | `IEvent` | 409 `events.locked` once approved/scheduled; 409 `events.package_locked` once checkout started; changing `startsAt` resets the admission window |
 | POST | `/events/:id/checkout` | owner | — | `{ paymentUrl, paymentAttemptId }` | **Implemented** (T-P2-07). 200; CSRF; 10/min. Reuses an open attempt with more than 15 minutes left; 409 `events.already_paid`, 409 `events.closed`, 422 `events.starts_in_past`, 503 `payments.unavailable` |
 | GET | `/events/:id/payment-status` | owner | `?paymentAttemptId` | `{ paymentStatus, attemptStatus }` | **Implemented** (T-P2-08). Fetches from Moyasar at most every 5 s per pending attempt; 60/min; a Moyasar outage returns the stored state. `attemptStatus` is null before any checkout. Used by `/dashboard/events/:id/payment` |
-| GET | `/events/:id/summary` | owner | — | `IEventSummary` | Polled every 10 s |
+| GET | `/events/:id/summary` | owner | — | `IEventSummary` | **Implemented** (T-P4-05). Polled every 10 s; 404 unless owned |
 | GET | `/events/:id/guests` | owner | `?page&limit&search&kind&rsvp&admitted` | `Paginated<IOwnerGuest> & { counts }` | **Implemented.** Phones masked `+9665•••••123`; search by name only; 404 unless owned |
 | GET | `/events/:id/invitation` | owner | — | `{ content: IInvitationContent \| null, approvable: boolean }` | **Implemented.** Latest version + rendered preview; 404 unless owned |
 | POST | `/events/:id/invitation/approve` | owner | `{ contentId, contentHash }` | `{ content, approvable }` | **Implemented.** 409 `invitation.version_outdated` if the id or hash is not the latest; idempotent |

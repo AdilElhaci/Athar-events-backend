@@ -28,6 +28,8 @@ import {
   toEventView,
   UpdateEventDto,
 } from './dto/event.dto';
+import type { EventSummary } from './dto/event-summary.dto';
+import { EventSummaryService } from './event-summary.service';
 import { EventsService } from './events.service';
 
 /** Owner endpoints: every query is scoped by `owner_id`; admins use `/admin/events`. */
@@ -37,7 +39,10 @@ import { EventsService } from './events.service';
 @UseGuards(JwtAuthGuard, UserTypeGuard)
 @RequireUserType(UserType.OWNER)
 export class EventsController {
-  constructor(private readonly events: EventsService) {}
+  constructor(
+    private readonly events: EventsService,
+    private readonly summaries: EventSummaryService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: "The signed-in owner's events, newest first." })
@@ -89,6 +94,15 @@ export class EventsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<EventView> {
     return toEventView(await this.events.get(user.id, id));
+  }
+
+  @Get(':id/summary')
+  @ApiOperation({ summary: 'Owner counts (SP-04), polled every 10 s.' })
+  summary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<EventSummary> {
+    return this.summaries.get(user.id, id);
   }
 
   @Patch(':id')

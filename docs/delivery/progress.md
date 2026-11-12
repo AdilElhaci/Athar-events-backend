@@ -79,7 +79,7 @@ Rules: one row per task; `done` requires evidence (commit hash, test run, verifi
 | T-P4-02 | P4 | Replacements UI SCR-24 | planned | T-P4-01 | AC-08-4 | |
 | T-P4-03 | P4 | Scan endpoints (owner-only, window, conditional update), public invitation endpoint | planned | T-P3-09, OQ-15 | AC-07-2…4 | |
 | T-P4-04 | P4 | Scanner PWA SCR-30/31/32, guest page SCR-40, real-device tests | planned | T-P4-03 | AC-07-5, AC-07-6 | |
-| T-P4-05 | P4 | Summary endpoint, owner counts with polling and `LastUpdated` | planned | T-P3-08 | AC-03-6 | |
+| T-P4-05 | P4 | Summary endpoint, owner counts with polling and `LastUpdated` | in-progress | T-P3-08 | AC-03-6 | 2026-11-12, committed, not deployed: `GET /events/:id/summary` (`EventSummaryService`, one aggregate query; 404 unless owned, 403 for admins); e2e `guests.e2e-spec.ts` «gives the owner summary counts» passes, full e2e 139/139. Owner SCR-13 shows `EventSummaryCards` once the campaign is `SENDING`/`PAUSED`/`SENT`/`CANCELLED`: invited, accepted, declined, no reply (with share of invited), then delivered, read, admitted (of accepted), replacements used/cap with available; 10 s polling (paused when unfocused), «آخر تحديث», stale notice keeping the last numbers; each card shows its definition under the number instead of a tooltip. Frontend typecheck and lint pass. **Open:** not checked in the browser (no sent event in the local database); `extras.used` stays 0 until replacements exist (T-P4-01). |
 | T-P4-06 | P4 | Message log SCR-25, resolve `UNKNOWN`/`FAILED`, QR reissue | planned | T-P3-07 | AC-06-4, AC-08-5 | |
 | T-P4-07 | P4 | Users admin SCR-27 (suspend, reactivate) | planned | T-P1-04 | AC-08-5 | 2026-11-02: "create admin" removed by D-33; administrators are created only by the server CLI (D-28) |
 | T-P4-08 | P4 | Venue rehearsal on staging (two phones, full journey); verification log entry | planned | T-P4-01…07 | Phase DoD | |
@@ -101,6 +101,7 @@ Rules: one row per task; `done` requires evidence (commit hash, test run, verifi
 
 **Session footer** (overwrite each session)
 
+- 2026-11-12: owner summary counts (T-P4-05): endpoint + SCR-13 cards, committed, not deployed. `invited` also counts a guest who replied after an `UNKNOWN` send (SP-04 updated), so `noReply` never goes negative.
 - 2026-11-12: create and delete WhatsApp templates from `/dashboard/whatsapp/templates` (D-41, uncommitted). Deploy needs `WHATSAPP_WABA_ID` on the server. First real check: create a throwaway UTILITY template, watch it reach APPROVED/REJECTED in the list, then delete it.
 - Also 2026-11-10: homepage shortened (articles and FAQ on their own pages, new reviews page and admin, T-P1-08 / T-P2-13, uncommitted); deploy needs migration `AddTestimonials`.
 - Last session: 2026-11-10 — WhatsApp live on the client's production number: tracer verified end to end on event AE-000002 (invitation, accept → QR received, decline), T-P1-10 done; failure codes kept on webhook receipts (`b696aea`, deployed). Campaign sender built (T-P3-07, uncommitted).

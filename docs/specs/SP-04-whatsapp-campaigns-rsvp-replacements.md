@@ -55,11 +55,11 @@ Shown in `IEventSummary` and on the owner dashboard; each with a tooltip:
 
 | Count | Definition |
 | --- | --- |
-| invited | Allocated guests whose invitation intent is `SENT` (accepted by WhatsApp) |
+| invited | Allocated guests whose invitation intent is `SENT` (accepted by WhatsApp), or who replied (an `UNKNOWN` send the guest answered was received) |
 | delivered | Invitation `delivery_status ≥ DELIVERED` |
 | read | Invitation `delivery_status = READ` |
-| accepted / declined | Guests by RSVP |
-| noReply | invited − accepted − declined |
+| accepted / declined | Invited guests by RSVP |
+| noReply | invited guests still `PENDING` (= invited − accepted − declined) |
 | extras cap / used / available | `extra_margin` / replacements allocated / min(eligible declines, cap − used, unallocated reserves) |
 | admitted | Guests with `checked_in_at` |
 
