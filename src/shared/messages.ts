@@ -140,6 +140,12 @@ export const MESSAGES = {
   'payments.refund_done': 'سُجّل استرجاع المبلغ.',
   'events.not_paid': 'المناسبة غير مدفوعة، فلا يوجد ما يُسترجع.',
   'events.refunded': 'سُجّل الاسترجاع وأُلغيت المناسبة.',
+  'users.self': 'لا يمكنك تعليق حسابك أو إعادة تفعيله بنفسك.',
+  'users.invited': 'هذا مدير مدعو لم يفعّل حسابه بعد؛ يُدار من الخادم.',
+  'users.already_suspended': 'الحساب معلّق مسبقاً.',
+  'users.already_active': 'الحساب مفعّل مسبقاً.',
+  'users.suspended': 'عُلّق الحساب وأُنهيت جلساته.',
+  'users.reactivated': 'أُعيد تفعيل الحساب.',
   'replacements.sent': 'أُرسلت دعوات البدلاء.',
   'replacements.count_or_guests':
     'حدد عدد البدلاء أو اختر الضيوف، وليس الاثنين.',

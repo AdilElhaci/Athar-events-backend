@@ -92,7 +92,7 @@ Legend — **Auth**: `public`, `owner` (`OWNER` and owns the event), `admin` (`P
 | POST | `/admin/messages/:messageId/resolve` | `{ resolution: 'MARK_SENT' \| 'MARK_FAILED' \| 'RESEND', reason }` | `{ message: IMessage, resendId }` | **Implemented.** `MARK_SENT`/`MARK_FAILED` for `UNKNOWN` only, `RESEND` for `UNKNOWN`/`FAILED`; 409 `messages.not_resolvable`, `messages.resolution_invalid`, `messages.guest_replied`, `messages.already_sent`, `messages.event_started`, `messages.guest_gone`, `messages.guest_not_accepted`; 422 `messages.window_closed` (QR after 23 h), `messages.kind_unsupported`; audited |
 | GET / POST / PATCH | `/admin/packages`, `/admin/packages/:id` | package fields | `IPackage` | `GET` is paginated and includes inactive packages. No delete: deactivate |
 | GET | `/admin/users` | `?type&status&search&page&limit` | `Paginated<IAdminUser>` | |
-| PATCH | `/admin/users/:id/status` | `{ status }` | `IAdminUser` | Cannot suspend yourself |
+| PATCH | `/admin/users/:id/status` | `{ status: 'ACTIVE' \| 'SUSPENDED', reason }` (3–300) | `IAdminUser` | **Implemented** (T-P4-07). 409 `users.self` (yourself), `users.invited` (invited admin: server CLI), `users.already_suspended` / `users.already_active`. Suspension ends every session and the next request with an old access token gets 401; the owner's events are untouched. Audited `user.suspended` / `user.reactivated` |
 | GET | `/admin/contact-messages` | `?status&search&page&limit` | `Paginated<IContactMessage>` | Newest first; search matches name, subject and phone (05… or +966…) literally |
 | GET | `/admin/contact-messages/new-count` | — | `{ count }` | Sidebar indicator, polled every 60 s |
 | GET | `/admin/contact-messages/:id` | — | `IContactMessage` | No side effect |

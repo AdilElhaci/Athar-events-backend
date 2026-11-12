@@ -1,4 +1,5 @@
-import { IsEnum, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEnum, IsIn, IsOptional, IsString, Length } from 'class-validator';
 import { PaginationQueryDto } from '../../../shared/pagination';
 import { User, UserStatus, UserType } from '../entities/user.entity';
 
@@ -35,4 +36,17 @@ export class AdminUsersQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+}
+
+/** SCR-27: suspend or reactivate; the reason goes to the admin action log. */
+export class UpdateUserStatusDto {
+  @IsIn([UserStatus.ACTIVE, UserStatus.SUSPENDED])
+  status!: UserStatus.ACTIVE | UserStatus.SUSPENDED;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(3, 300)
+  reason!: string;
 }

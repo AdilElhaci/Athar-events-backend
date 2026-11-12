@@ -1,12 +1,31 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { buildMeta, escapeLike, Paginated } from '../../shared/pagination';
+import { withMessage } from '../../shared/interceptors/response.interceptor';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { CsrfGuard } from '../auth/guards/csrf.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequireUserType, UserTypeGuard } from '../auth/guards/user-type.guard';
-import { AdminUsersQueryDto, toUserView, UserView } from './dto/user.dto';
-import { User, UserType } from './entities/user.entity';
+import type { AuthenticatedUser } from '../auth/types/auth.types';
+import { AdminUsersService } from './admin-users.service';
+import {
+  AdminUsersQueryDto,
+  toUserView,
+  UpdateUserStatusDto,
+  UserView,
+} from './dto/user.dto';
+import { User, UserStatus, UserType } from './entities/user.entity';
 
 @ApiTags('Admin — Users')
 @ApiBearerAuth()
@@ -16,6 +35,7 @@ import { User, UserType } from './entities/user.entity';
 export class AdminUsersController {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly admin: AdminUsersService,
   ) {}
 
   @Get()
@@ -46,5 +66,29 @@ export class AdminUsersController {
       items: rows.map(toUserView),
       meta: buildMeta(total, query.page, query.limit),
     };
+  }
+
+  @Patch(':id/status')
+  @UseGuards(CsrfGuard)
+  @ApiOperation({
+    summary: 'Suspend (ends every session) or reactivate; not yourself.',
+  })
+  async setStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateUserStatusDto,
+  ) {
+    const view = await this.admin.setStatus(
+      user.id,
+      id,
+      dto.status,
+      dto.reason,
+    );
+    return withMessage(
+      view,
+      dto.status === UserStatus.SUSPENDED
+        ? 'users.suspended'
+        : 'users.reactivated',
+    );
   }
 }
