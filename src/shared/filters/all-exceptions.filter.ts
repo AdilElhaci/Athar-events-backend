@@ -46,6 +46,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof AppException) {
       status = exception.getStatus();
       code = exception.code;
+      details = exception.details;
     } else if (exception instanceof ThrottlerException) {
       status = HttpStatus.TOO_MANY_REQUESTS;
       code = 'common.too_many_requests';

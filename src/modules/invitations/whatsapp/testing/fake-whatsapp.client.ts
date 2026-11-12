@@ -1,6 +1,8 @@
 import {
   MessageTemplate,
+  NewTemplate,
   SendOutcome,
+  TemplateWriteOutcome,
   TemplatesOutcome,
   TemplateMessage,
   UploadOutcome,
@@ -40,6 +42,44 @@ export class FakeWhatsappClient extends WhatsappClient {
     return Promise.resolve({ ok: true, templates: [...this.templates] });
   }
 
+  /** Templates submitted through `createTemplate`, in order. */
+  created: NewTemplate[] = [];
+  deleted: Array<{ id: string; name: string }> = [];
+  /** Makes the next create or delete fail. */
+  nextWriteFailure: Exclude<TemplateWriteOutcome, { ok: true }> | null = null;
+
+  createTemplate(template: NewTemplate): Promise<TemplateWriteOutcome> {
+    const failure = this.takeWriteFailure();
+    if (failure) return Promise.resolve(failure);
+    const id = String(900000 + this.created.length + 1);
+    this.created.push(template);
+    this.templates.push({
+      id,
+      name: template.name,
+      language: template.language,
+      category: template.category,
+      status: 'PENDING',
+      rejectedReason: null,
+      body: template.body,
+      buttons: template.quickReplies,
+    });
+    return Promise.resolve({ ok: true, id, status: 'PENDING' });
+  }
+
+  deleteTemplate(id: string, name: string): Promise<TemplateWriteOutcome> {
+    const failure = this.takeWriteFailure();
+    if (failure) return Promise.resolve(failure);
+    this.deleted.push({ id, name });
+    this.templates = this.templates.filter((t) => t.id !== id);
+    return Promise.resolve({ ok: true, id, status: '' });
+  }
+
+  private takeWriteFailure() {
+    const failure = this.nextWriteFailure;
+    this.nextWriteFailure = null;
+    return failure;
+  }
+
   sendTemplate(to: string, template: TemplateMessage): Promise<SendOutcome> {
     return this.accept((id) => ({ type: 'template', to, template, id }));
   }
@@ -63,6 +103,9 @@ export class FakeWhatsappClient extends WhatsappClient {
   reset(): void {
     this.templates = [];
     this.templatesError = null;
+    this.created = [];
+    this.deleted = [];
+    this.nextWriteFailure = null;
     this.sent = [];
     this.uploads = [];
     this.nextOutcome = null;

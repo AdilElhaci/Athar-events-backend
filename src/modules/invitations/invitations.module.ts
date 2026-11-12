@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminAction } from '../admin-actions/admin-action.entity';
 import { AuthModule } from '../auth/auth.module';
 import { Event } from '../events/entities/event.entity';
 import { EventsModule } from '../events/events.module';
@@ -17,6 +18,7 @@ import { CampaignSenderService } from './whatsapp/campaign-sender.service';
 import { WhatsappSenderService } from './whatsapp/whatsapp-sender.service';
 import { WhatsappSweeperJob } from './whatsapp/whatsapp-sweeper.job';
 import { WhatsappWebhookController } from './whatsapp/whatsapp-webhook.controller';
+import { WhatsappTemplatesService } from './whatsapp/whatsapp-templates.service';
 import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
 
 @Module({
@@ -28,6 +30,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
       WebhookReceipt,
       Guest,
       Event,
+      AdminAction,
     ]),
     AuthModule,
     EventsModule,
@@ -45,6 +48,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     CampaignSenderService,
     WhatsappWebhookService,
     WhatsappSweeperJob,
+    WhatsappTemplatesService,
   ],
 })
 export class InvitationsModule {}

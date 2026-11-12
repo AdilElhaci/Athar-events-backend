@@ -45,12 +45,45 @@ export interface MessageTemplate {
 export type TemplatesOutcome =
   { ok: true; templates: MessageTemplate[] } | { ok: false; code: string };
 
+/** A template to submit to Meta for review; the service validates it first. */
+export interface NewTemplate {
+  name: string;
+  language: string;
+  category: 'MARKETING' | 'UTILITY';
+  headerText?: string;
+  /** Body text with {{1}}…{{n}}. */
+  body: string;
+  /** One sample value per body variable, in order (Meta requires them for review). */
+  bodyExamples: string[];
+  footerText?: string;
+  quickReplies: string[];
+}
+
+/**
+ * `exists`: Meta already has this name in this language. `network`: Meta was not reached.
+ * `userMessage` is Meta's explanation for the admin; it is shown, never logged.
+ */
+export type TemplateWriteOutcome =
+  | { ok: true; id: string; status: string }
+  | {
+      ok: false;
+      reason: 'exists' | 'rejected' | 'network' | 'not_configured';
+      code: string;
+      userMessage?: string;
+    };
+
 /** The DI token and the contract; e2e tests swap in `FakeWhatsappClient`. */
 export abstract class WhatsappClient {
   abstract isConfigured(): boolean;
   /** Token and WABA id are set, so templates can be read. */
   abstract canListTemplates(): boolean;
   abstract listTemplates(): Promise<TemplatesOutcome>;
+  abstract createTemplate(template: NewTemplate): Promise<TemplateWriteOutcome>;
+  /** Deletes the template with this Meta id; Meta checks that the name matches. */
+  abstract deleteTemplate(
+    id: string,
+    name: string,
+  ): Promise<TemplateWriteOutcome>;
   /** `to` is `+9665…`; the leading plus is dropped for Meta. */
   abstract sendTemplate(
     to: string,
@@ -96,6 +129,51 @@ interface RawTemplate {
 
 const str = (value: unknown): string =>
   typeof value === 'string' ? value : '';
+
+/** Meta's error subcode for "a template with this name and language already exists". */
+const TEMPLATE_EXISTS_SUBCODE = 2388024;
+
+const metaUserMessage = (body: unknown): string | undefined => {
+  const error = (
+    body as {
+      error?: { error_user_msg?: unknown; error_user_title?: unknown };
+    } | null
+  )?.error;
+  const text = str(error?.error_user_msg) || str(error?.error_user_title);
+  return text ? text.slice(0, 500) : undefined;
+};
+
+const metaSubcode = (body: unknown): number | undefined => {
+  const sub = (body as { error?: { error_subcode?: unknown } } | null)?.error
+    ?.error_subcode;
+  return typeof sub === 'number' ? sub : undefined;
+};
+
+/** The Graph API `components` array for a new template. */
+export const toTemplateComponents = (t: NewTemplate): unknown[] => [
+  ...(t.headerText
+    ? [{ type: 'HEADER', format: 'TEXT', text: t.headerText }]
+    : []),
+  {
+    type: 'BODY',
+    text: t.body,
+    ...(t.bodyExamples.length > 0
+      ? { example: { body_text: [t.bodyExamples] } }
+      : {}),
+  },
+  ...(t.footerText ? [{ type: 'FOOTER', text: t.footerText }] : []),
+  ...(t.quickReplies.length > 0
+    ? [
+        {
+          type: 'BUTTONS',
+          buttons: t.quickReplies.map((text) => ({
+            type: 'QUICK_REPLY',
+            text,
+          })),
+        },
+      ]
+    : []),
+];
 
 export const toMessageTemplate = (raw: RawTemplate): MessageTemplate => {
   const components = Array.isArray(raw.components) ? raw.components : [];
@@ -180,6 +258,73 @@ export class HttpWhatsappClient extends WhatsappClient {
         typeof body.paging?.next === 'string' ? body.paging.next : undefined;
     }
     return { ok: true, templates };
+  }
+
+  createTemplate(template: NewTemplate): Promise<TemplateWriteOutcome> {
+    return this.writeTemplate(
+      `${this.baseUrl}/${this.wabaId}/message_templates`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: template.name,
+          language: template.language,
+          category: template.category,
+          components: toTemplateComponents(template),
+        }),
+      },
+    );
+  }
+
+  deleteTemplate(id: string, name: string): Promise<TemplateWriteOutcome> {
+    const url = new URL(`${this.baseUrl}/${this.wabaId}/message_templates`);
+    url.searchParams.set('hsm_id', id);
+    url.searchParams.set('name', name);
+    return this.writeTemplate(url.toString(), {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+  }
+
+  private async writeTemplate(
+    url: string,
+    init: RequestInit,
+  ): Promise<TemplateWriteOutcome> {
+    if (!this.canListTemplates())
+      return { ok: false, reason: 'not_configured', code: 'not_configured' };
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        reason: 'network',
+        code: networkCode(error) ?? (error as Error).name,
+      };
+    }
+    const body = (await response.json().catch(() => null)) as {
+      id?: unknown;
+      status?: unknown;
+      success?: unknown;
+    } | null;
+    if (response.ok && (typeof body?.id === 'string' || body?.success === true))
+      return { ok: true, id: str(body?.id), status: str(body?.status) };
+    const code = `meta_${errorCode(body) ?? response.status}`;
+    if (response.status >= 500 || response.status === 429)
+      return { ok: false, reason: 'network', code };
+    return {
+      ok: false,
+      reason:
+        metaSubcode(body) === TEMPLATE_EXISTS_SUBCODE ? 'exists' : 'rejected',
+      code,
+      userMessage: metaUserMessage(body),
+    };
   }
 
   sendTemplate(to: string, template: TemplateMessage): Promise<SendOutcome> {

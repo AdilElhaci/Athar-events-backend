@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import Redis from 'ioredis';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import { AdminAction } from '../src/modules/admin-actions/admin-action.entity';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { AdminProvisioningService } from '../src/modules/auth/services/admin-provisioning.service';
@@ -44,12 +45,29 @@ describe('Admin WhatsApp templates (e2e)', () => {
   let meta: FakeWhatsappClient;
   let adminAccess: string;
   let ownerAccess: string;
+  let db: DataSource;
 
   const csrf = (req: request.Test) =>
     req.set('Origin', ORIGIN).set('X-Requested-With', 'athar-events');
   const server = () => request(app.getHttpServer());
   const asAdmin = () =>
     server().get(ROUTE).set('Authorization', `Bearer ${adminAccess}`);
+  const bearer = (req: request.Test, token = adminAccess) =>
+    req.set('Authorization', `Bearer ${token}`);
+  const create = (body: object, token = adminAccess) =>
+    bearer(csrf(server().post(ROUTE)), token).send(body);
+  const remove = (id: string, name: string, token = adminAccess) =>
+    bearer(csrf(server().delete(`${ROUTE}/${id}?name=${name}`)), token);
+  const draft = {
+    name: 'event_reminder',
+    language: 'ar',
+    category: 'UTILITY',
+    headerText: 'تذكير بالمناسبة',
+    body: 'أهلاً {{1}}، نذكّرك بموعد {{2}} غداً.',
+    bodyExamples: ['سارة', 'حفل الزفاف'],
+    footerText: 'أثر للمناسبات',
+    quickReplies: ['تم', 'تواصل معنا'],
+  };
 
   async function login(email: string) {
     const res = await csrf(server().post('/api/auth/login'))
@@ -72,7 +90,7 @@ describe('Admin WhatsApp templates (e2e)', () => {
     });
     configureApp(app);
     await app.init();
-    const db = app.get(DataSource);
+    db = app.get(DataSource);
     await db.dropDatabase();
     await db.runMigrations();
     await app.get<Redis>(REDIS).flushdb();
@@ -158,5 +176,124 @@ describe('Admin WhatsApp templates (e2e)', () => {
     meta.templatesError = 'meta_190';
     const res = await asAdmin().expect(503);
     expect(res.body.code).toBe('whatsapp.templates_unavailable');
+  });
+
+  it('only admins create or delete, and writes need the CSRF headers', async () => {
+    await csrf(server().post(ROUTE)).send(draft).expect(401);
+    await create(draft, ownerAccess).expect(403);
+    await bearer(server().post(ROUTE)).send(draft).expect(403);
+    await remove('123', 'event_reminder', ownerAccess).expect(403);
+    await bearer(server().delete(`${ROUTE}/123?name=event_reminder`)).expect(
+      403,
+    );
+    expect(meta.created).toHaveLength(0);
+    expect(meta.deleted).toHaveLength(0);
+  });
+
+  it('submits a template to Meta, audits it, and lists it as pending', async () => {
+    const res = await create(draft).expect(200);
+    expect(res.body.code).toBe('whatsapp.template_created');
+    expect(meta.created).toEqual([draft]);
+    const listed = (await asAdmin().expect(200)).body.data.templates;
+    expect(listed).toEqual([
+      expect.objectContaining({ name: 'event_reminder', status: 'PENDING' }),
+    ]);
+    const action = await db
+      .getRepository(AdminAction)
+      .findOneByOrFail({ action: 'whatsapp.template_create' });
+    expect(action.summary).toMatchObject({
+      name: 'event_reminder',
+      language: 'ar',
+      category: 'UTILITY',
+    });
+  });
+
+  it('treats empty header and footer as none', async () => {
+    await create({ ...draft, headerText: '  ', footerText: '' }).expect(200);
+    expect(meta.created[0].headerText).toBeUndefined();
+    expect(meta.created[0].footerText).toBeUndefined();
+  });
+
+  it('validates input before calling Meta', async () => {
+    const bad = async (patch: object, code: string) => {
+      const res = await create({ ...draft, ...patch }).expect(400);
+      expect(res.body.code).toBe(code);
+    };
+    await bad({ name: 'Event Reminder' }, 'common.validation');
+    await bad({ language: 'fr' }, 'common.validation');
+    await bad({ category: 'AUTHENTICATION' }, 'common.validation');
+    await bad({ quickReplies: ['a', 'b', 'c', 'd'] }, 'common.validation');
+    await bad({ quickReplies: ['x'.repeat(26)] }, 'common.validation');
+    await bad({ body: 'x'.repeat(1025) }, 'common.validation');
+    await bad(
+      { bodyExamples: ['سارة'] },
+      'whatsapp.template_variables_invalid',
+    );
+    await bad(
+      { body: 'أهلاً {{1}} و {{3}} غداً.' },
+      'whatsapp.template_variables_invalid',
+    );
+    await bad(
+      { body: '{{1}} نذكّرك بموعد {{2}} غداً.' },
+      'whatsapp.template_variables_invalid',
+    );
+    await bad(
+      { headerText: 'مرحباً {{1}}' },
+      'whatsapp.template_header_invalid',
+    );
+    await bad({ footerText: 'سطر\nثانٍ' }, 'whatsapp.template_header_invalid');
+    expect(meta.created).toHaveLength(0);
+  });
+
+  it('refuses to create or delete the invitation template', async () => {
+    const res = await create({ ...draft, name: 'athar_invitation' }).expect(
+      409,
+    );
+    expect(res.body.code).toBe('whatsapp.template_reserved');
+    await remove('123', 'athar_invitation').expect(409);
+    expect(meta.created).toHaveLength(0);
+    expect(meta.deleted).toHaveLength(0);
+  });
+
+  it("maps Meta's answers: exists 409, rejection 422 with Meta's reason, outage 503", async () => {
+    meta.nextWriteFailure = {
+      ok: false,
+      reason: 'exists',
+      code: 'meta_100',
+    };
+    expect((await create(draft).expect(409)).body.code).toBe(
+      'whatsapp.template_exists',
+    );
+    meta.nextWriteFailure = {
+      ok: false,
+      reason: 'rejected',
+      code: 'meta_100',
+      userMessage: 'Too many variables for the text length',
+    };
+    const rejected = await create(draft).expect(422);
+    expect(rejected.body.code).toBe('whatsapp.template_create_failed');
+    expect(rejected.body.error).toEqual([
+      'Too many variables for the text length',
+    ]);
+    meta.nextWriteFailure = { ok: false, reason: 'network', code: 'meta_500' };
+    expect((await create(draft).expect(503)).body.code).toBe(
+      'whatsapp.unreachable',
+    );
+  });
+
+  it('deletes a template by Meta id and name, and audits it', async () => {
+    await create(draft).expect(200);
+    const id = meta.templates[0].id;
+    await remove('not-a-number', 'event_reminder').expect(400);
+    await remove(id, 'Bad Name').expect(400);
+    const res = await remove(id, 'event_reminder').expect(200);
+    expect(res.body.code).toBe('whatsapp.template_deleted');
+    expect(meta.deleted).toEqual([{ id, name: 'event_reminder' }]);
+    expect((await asAdmin().expect(200)).body.data.templates).toEqual([]);
+    await expect(
+      db
+        .getRepository(AdminAction)
+        .countBy({ action: 'whatsapp.template_delete' }),
+    ).resolves.toBe(1);
   });
 });

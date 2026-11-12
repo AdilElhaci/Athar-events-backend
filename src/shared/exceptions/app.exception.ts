@@ -6,6 +6,8 @@ export class AppException extends HttpException {
   constructor(
     readonly code: ErrorCode,
     status: HttpStatus,
+    /** Extra lines for the client (e.g. a provider's explanation); returned as `error`, never logged. */
+    readonly details?: string[],
   ) {
     super({ code }, status);
   }
@@ -21,8 +23,8 @@ export const notFound = (code: ErrorCode = 'common.not_found') =>
   new AppException(code, HttpStatus.NOT_FOUND);
 export const conflict = (code: ErrorCode) =>
   new AppException(code, HttpStatus.CONFLICT);
-export const unprocessable = (code: ErrorCode) =>
-  new AppException(code, HttpStatus.UNPROCESSABLE_ENTITY);
+export const unprocessable = (code: ErrorCode, details?: string[]) =>
+  new AppException(code, HttpStatus.UNPROCESSABLE_ENTITY, details);
 export const serviceUnavailable = (code: ErrorCode) =>
   new AppException(code, HttpStatus.SERVICE_UNAVAILABLE);
 export const tooManyRequests = (code: ErrorCode = 'common.too_many_requests') =>

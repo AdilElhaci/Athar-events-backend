@@ -233,4 +233,98 @@ describe('HttpWhatsappClient', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });
+
+  describe('template writes', () => {
+    const writer = () =>
+      new HttpWhatsappClient(
+        config({
+          WHATSAPP_ACCESS_TOKEN: 'token',
+          WHATSAPP_WABA_ID: '987654',
+          WHATSAPP_GRAPH_BASE_URL: 'https://graph.test',
+          WHATSAPP_GRAPH_VERSION: 'v23.0',
+        }) as never,
+      );
+    const draft = {
+      name: 'event_reminder',
+      language: 'ar',
+      category: 'UTILITY' as const,
+      headerText: 'تذكير',
+      body: 'أهلاً {{1}}، نذكّرك بالمناسبة.',
+      bodyExamples: ['سارة'],
+      footerText: 'أثر',
+      quickReplies: ['تم'],
+    };
+
+    it('posts the components Meta expects', async () => {
+      const fetchMock = respond(200, {
+        id: '555',
+        status: 'PENDING',
+        category: 'UTILITY',
+      });
+      await expect(writer().createTemplate(draft)).resolves.toEqual({
+        ok: true,
+        id: '555',
+        status: 'PENDING',
+      });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://graph.test/v23.0/987654/message_templates');
+      expect(init!.method).toBe('POST');
+      expect(JSON.parse(init!.body as string)).toEqual({
+        name: 'event_reminder',
+        language: 'ar',
+        category: 'UTILITY',
+        components: [
+          { type: 'HEADER', format: 'TEXT', text: 'تذكير' },
+          {
+            type: 'BODY',
+            text: 'أهلاً {{1}}، نذكّرك بالمناسبة.',
+            example: { body_text: [['سارة']] },
+          },
+          { type: 'FOOTER', text: 'أثر' },
+          { type: 'BUTTONS', buttons: [{ type: 'QUICK_REPLY', text: 'تم' }] },
+        ],
+      });
+    });
+
+    it('classifies an existing name, a rejection with its reason, and 5xx', async () => {
+      respond(400, {
+        error: {
+          code: 100,
+          error_subcode: 2388024,
+          error_user_msg: 'already exists',
+        },
+      });
+      await expect(writer().createTemplate(draft)).resolves.toMatchObject({
+        ok: false,
+        reason: 'exists',
+      });
+      jest.restoreAllMocks();
+      respond(400, { error: { code: 100, error_user_msg: 'Bad variable' } });
+      await expect(writer().createTemplate(draft)).resolves.toEqual({
+        ok: false,
+        reason: 'rejected',
+        code: 'meta_100',
+        userMessage: 'Bad variable',
+      });
+      jest.restoreAllMocks();
+      respond(503, {});
+      await expect(writer().createTemplate(draft)).resolves.toMatchObject({
+        ok: false,
+        reason: 'network',
+      });
+    });
+
+    it('deletes by Meta id and name', async () => {
+      const fetchMock = respond(200, { success: true });
+      await expect(
+        writer().deleteTemplate('555', 'event_reminder'),
+      ).resolves.toMatchObject({ ok: true });
+      const [url, init] = fetchMock.mock.calls[0];
+      const parsed = new URL(url as string);
+      expect(parsed.pathname).toBe('/v23.0/987654/message_templates');
+      expect(parsed.searchParams.get('hsm_id')).toBe('555');
+      expect(parsed.searchParams.get('name')).toBe('event_reminder');
+      expect(init!.method).toBe('DELETE');
+    });
+  });
 });

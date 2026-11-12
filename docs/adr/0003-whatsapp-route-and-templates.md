@@ -33,6 +33,10 @@ The quotation requires the WhatsApp Business API, a two-button invitation templa
 - `UNKNOWN` sends require an admin resolution screen.
 - Template changes need Meta re-approval; the invitation wording is fixed per template, with variables only.
 
+## Later decisions
+
+- [D-41](../product/decisions.md) (2026-11-12): admins may create and delete other templates from the dashboard; the invitation template stays managed in WhatsApp Manager.
+
 ## Open items
 
 [OQ-14](../product/open-questions.md) (verification, category, cost), [OQ-19](../product/open-questions.md) (one sender), [OQ-21](../product/open-questions.md) (volume vs. messaging tier), [OQ-22](../product/open-questions.md) (RSVP changes).

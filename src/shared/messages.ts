@@ -118,6 +118,21 @@ export const MESSAGES = {
   'campaign.not_scheduled': 'المناسبة غير مجدولة.',
   'whatsapp.templates_unavailable':
     'تعذّر جلب قوالب واتساب من Meta الآن، حاول بعد قليل.',
+  'whatsapp.not_configured':
+    'ربط واتساب غير مكتمل على الخادم (رمز الوصول أو معرّف الحساب).',
+  'whatsapp.unreachable': 'تعذّر الوصول إلى Meta الآن، حاول بعد قليل.',
+  'whatsapp.template_created': 'أُرسل القالب إلى Meta للمراجعة.',
+  'whatsapp.template_deleted': 'تم حذف القالب من Meta.',
+  'whatsapp.template_reserved':
+    'هذا قالب الدعوة المستخدم في الإرسال، ولا يُنشأ أو يُحذف من لوحة التحكم.',
+  'whatsapp.template_variables_invalid':
+    'متغيرات نص الرسالة غير صحيحة: رقّمها {{1}} ثم {{2}}… دون تخطٍّ، وأدخل مثالاً لكل متغير، ولا تبدأ النص أو تنهه بمتغير.',
+  'whatsapp.template_header_invalid':
+    'العنوان والتذييل نص ثابت في سطر واحد دون متغيرات.',
+  'whatsapp.template_exists':
+    'يوجد في Meta قالب بهذا الاسم وهذه اللغة، أو حُذف قبل أقل من 30 يوماً.',
+  'whatsapp.template_create_failed': 'رفضت Meta إنشاء القالب.',
+  'whatsapp.template_delete_failed': 'تعذّر حذف القالب من Meta.',
   'user.phone_invalid':
     'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',
 } as const;
