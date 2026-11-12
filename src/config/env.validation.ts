@@ -196,6 +196,16 @@ export class EnvironmentVariables {
   @IsIn(['PENDING', 'APPROVED', 'REJECTED'])
   WHATSAPP_INVITATION_TEMPLATE_STATUS: 'PENDING' | 'APPROVED' | 'REJECTED' =
     'PENDING';
+
+  /**
+   * Invitations (business-initiated templates) sent in any rolling 24 h, all events together. Keep
+   * it at or below the number's Meta messaging limit (WhatsApp Manager > Insights); above it Meta
+   * rejects sends. Invitations past the limit stay queued for the next window. 0 = no limit.
+   * QR images answer a guest's reply (service window) and do not count (OQ-21).
+   */
+  @IsInt()
+  @Min(0)
+  WHATSAPP_DAILY_INVITATION_LIMIT = 1000;
 }
 
 export function validateEnv(

@@ -191,3 +191,9 @@ Tracer: deployed (`f69609d`, `b696aea`). Campaign sender: uncommitted, not deplo
 
 Not verified: a real scheduled campaign on production; Meta's tier limits at volume.
 
+## 2026-11-12 — Campaign pause/resume and daily limit (T-P3-07)
+
+- **Scope:** `POST /admin/events/:id/pause` and `/resume`, paused campaigns skipped by the sender, `WHATSAPP_DAILY_INVITATION_LIMIT`, SCR-23 buttons.
+- **Backend:** typecheck, `pnpm test` 58/58, `pnpm test:e2e` 144/144, `pnpm build` pass. New e2e: pause/resume transitions, 409 codes, 403 for an owner, audit rows, version unchanged (`invitations`); paused invitations stay queued while a QR image still goes out, resume sends the rest then `SENT`; a pause after the claim returns the intent to `QUEUED` with no attempt used; the daily limit sends exactly the remaining room and leaves the rest queued (`whatsapp`). ESLint: no new findings (2 pre-existing errors in `articles.e2e-spec.ts`).
+- **Frontend:** typecheck, lint, format pass. Not checked in the browser (no sending campaign in the local database).
+- **Not verified:** against the real Meta number; the right limit value for the client's tier.

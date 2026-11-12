@@ -278,6 +278,52 @@ export class InvitationsService {
     });
   }
 
+  /**
+   * `SENDING` → `PAUSED`. Queued invitations stay queued and are skipped by the sender until
+   * resume; at most the message already in flight goes out. `schedule_version` is left alone on
+   * purpose: it invalidates intents, and a pause must keep them (SP-04 §4 Sending).
+   */
+  async pause(
+    actorUserId: string,
+    eventId: string,
+    reason: string | undefined,
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const event = await lockEvent(manager, eventId);
+      if (event.campaignStatus !== EventCampaignStatus.SENDING)
+        throw conflict('campaign.not_sending');
+      await manager.update(
+        Event,
+        { id: eventId },
+        { campaignStatus: EventCampaignStatus.PAUSED },
+      );
+      await audit(manager, actorUserId, 'campaign.pause', eventId, {
+        reason: reason || null,
+        queued: await queuedInvitations(manager, eventId),
+      });
+    });
+  }
+
+  /** `PAUSED` → `SENDING`; refused once the event is closed or has started (AC-06-5). */
+  async resume(actorUserId: string, eventId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const event = await lockEvent(manager, eventId);
+      if (event.campaignStatus !== EventCampaignStatus.PAUSED)
+        throw conflict('campaign.not_paused');
+      if (isClosed(event)) throw conflict('events.closed');
+      if (event.startsAt.getTime() <= Date.now())
+        throw conflict('campaign.event_started');
+      await manager.update(
+        Event,
+        { id: eventId },
+        { campaignStatus: EventCampaignStatus.SENDING },
+      );
+      await audit(manager, actorUserId, 'campaign.resume', eventId, {
+        queued: await queuedInvitations(manager, eventId),
+      });
+    });
+  }
+
   private preconditions(event: Event): CampaignPreconditions {
     return {
       paid: event.paymentStatus === EventPaymentStatus.PAID,
@@ -347,6 +393,18 @@ async function lockEvent(
   });
   if (!event) throw notFound();
   return event;
+}
+
+async function queuedInvitations(
+  manager: EntityManager,
+  eventId: string,
+): Promise<number> {
+  const [row] = await manager.query<{ n: number }[]>(
+    `SELECT count(*)::int AS n FROM whatsapp_messages
+      WHERE event_id = $1 AND kind = 'INVITATION' AND state = 'QUEUED'`,
+    [eventId],
+  );
+  return row.n;
 }
 
 const audit = (

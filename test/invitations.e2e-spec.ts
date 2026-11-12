@@ -12,6 +12,7 @@ import { REDIS } from '../src/modules/auth/services/rate-limit.service';
 import {
   Event,
   EventApprovalStatus,
+  EventCampaignStatus,
   EventPaymentStatus,
 } from '../src/modules/events/entities/event.entity';
 import { InvitationContent } from '../src/modules/invitations/entities/invitation-content.entity';
@@ -410,5 +411,74 @@ describe('Invitation approval and scheduling (e2e)', () => {
     const after = await reload(event.id);
     expect(after.approvalStatus).toBe(EventApprovalStatus.AWAITING_OWNER);
     expect(after.approvedContentId).toBeNull();
+  });
+
+  it('pauses a sending campaign and resumes it, audited (SP-04)', async () => {
+    const event = await createEvent({
+      campaignStatus: EventCampaignStatus.SCHEDULED,
+    });
+    const pause = () =>
+      csrf(asAdmin(server().post(`/api/admin/events/${event.id}/pause`)));
+    const resume = () =>
+      csrf(asAdmin(server().post(`/api/admin/events/${event.id}/resume`)));
+
+    expect((await pause().send({}).expect(409)).body.code).toBe(
+      'campaign.not_sending',
+    );
+    await db
+      .getRepository(Event)
+      .update(event.id, { campaignStatus: EventCampaignStatus.SENDING });
+    await csrf(asOwner(server().post(`/api/admin/events/${event.id}/pause`)))
+      .send({})
+      .expect(403);
+
+    const paused = await pause()
+      .send({ reason: 'طلب صاحب المناسبة' })
+      .expect(200);
+    expect(paused.body.data.campaignStatus).toBe('PAUSED');
+    expect((await reload(event.id)).scheduleVersion).toBe(
+      event.scheduleVersion,
+    );
+    expect((await pause().send({}).expect(409)).body.code).toBe(
+      'campaign.not_sending',
+    );
+
+    const resumed = await resume().send({}).expect(200);
+    expect(resumed.body.data.campaignStatus).toBe('SENDING');
+    expect((await resume().send({}).expect(409)).body.code).toBe(
+      'campaign.not_paused',
+    );
+
+    const actions = await db.getRepository(AdminAction).find({
+      where: { targetId: event.id },
+      order: { createdAt: 'ASC' },
+    });
+    expect(actions.map((a) => a.action)).toEqual([
+      'campaign.pause',
+      'campaign.resume',
+    ]);
+    expect(actions[0].summary).toMatchObject({
+      reason: 'طلب صاحب المناسبة',
+      queued: 0,
+    });
+  });
+
+  it('does not resume once the event has started (AC-06-5)', async () => {
+    const event = await createEvent({
+      campaignStatus: EventCampaignStatus.PAUSED,
+    });
+    await db.query(
+      `UPDATE events SET starts_at = now() - interval '1 minute' WHERE id = $1`,
+      [event.id],
+    );
+    const res = await csrf(
+      asAdmin(server().post(`/api/admin/events/${event.id}/resume`)),
+    )
+      .send({})
+      .expect(409);
+    expect(res.body.code).toBe('campaign.event_started');
+    expect((await reload(event.id)).campaignStatus).toBe(
+      EventCampaignStatus.PAUSED,
+    );
   });
 });

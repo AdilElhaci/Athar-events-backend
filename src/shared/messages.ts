@@ -116,6 +116,11 @@ export const MESSAGES = {
   'campaign.send_after_event': 'موعد الإرسال يجب أن يسبق موعد المناسبة.',
   'campaign.already_started': 'بدأ الإرسال أو انتهى، فلا يمكن تغيير الجدولة.',
   'campaign.not_scheduled': 'المناسبة غير مجدولة.',
+  'campaign.paused': 'أُوقف الإرسال مؤقتاً.',
+  'campaign.resumed': 'استُؤنف الإرسال.',
+  'campaign.not_sending': 'الإرسال ليس جارياً الآن.',
+  'campaign.not_paused': 'الإرسال ليس موقوفاً.',
+  'campaign.event_started': 'بدأت المناسبة، فلا يمكن استئناف الإرسال.',
   'whatsapp.templates_unavailable':
     'تعذّر جلب قوالب واتساب من Meta الآن، حاول بعد قليل.',
   'whatsapp.not_configured':

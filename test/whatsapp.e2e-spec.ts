@@ -737,6 +737,111 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
       ).toBe(EventCampaignStatus.SENT);
     });
 
+    it('pause holds queued invitations, a QR still goes out, resume sends the rest', async () => {
+      const eventId = await dueCampaign();
+      await app.get(WhatsappSweeperJob).run(60_000); // queue the campaign, send nothing
+      await events().update(eventId, {
+        campaignStatus: EventCampaignStatus.PAUSED,
+      });
+      const accepted = await createGuest({ phone: '+966500000009' });
+      await db
+        .getRepository(Guest)
+        .update(accepted.id, { rsvp: GuestRsvp.ACCEPTED });
+      await messages().save(
+        messages().create({
+          eventId: accepted.eventId,
+          guestId: accepted.id,
+          kind: WhatsappMessageKind.QR,
+          logicalKey: `qr:${accepted.id}:1`,
+          qrVersion: 1,
+        }),
+      );
+
+      meta.reset();
+      await sweep();
+      expect(meta.sent.map((sent) => sent.type)).toEqual(['image']);
+      expect(
+        await messages().countBy({
+          eventId,
+          kind: WhatsappMessageKind.INVITATION,
+          state: WhatsappMessageState.QUEUED,
+        }),
+      ).toBe(3);
+      // Not SENT while paused, even though nothing is in flight.
+      expect(
+        (await events().findOneByOrFail({ id: eventId })).campaignStatus,
+      ).toBe(EventCampaignStatus.PAUSED);
+
+      await events().update(eventId, {
+        campaignStatus: EventCampaignStatus.SENDING,
+      });
+      meta.reset();
+      await sweep();
+      expect(meta.sent.map((sent) => sent.to).sort()).toEqual([
+        '+966500000001',
+        '+966500000002',
+        '+966500000003',
+      ]);
+      expect(
+        (await events().findOneByOrFail({ id: eventId })).campaignStatus,
+      ).toBe(EventCampaignStatus.SENT);
+    });
+
+    it('a pause that lands after the claim puts the intent back without an attempt', async () => {
+      const eventId = await dueCampaign();
+      await app.get(WhatsappSweeperJob).run(60_000);
+      const [intent] = await messages().findBy({
+        eventId,
+        kind: WhatsappMessageKind.INVITATION,
+      });
+      await events().update(eventId, {
+        campaignStatus: EventCampaignStatus.PAUSED,
+      });
+      meta.reset();
+      await sender.process(intent.id);
+      expect(meta.sent).toHaveLength(0);
+      const after = await messages().findOneByOrFail({ id: intent.id });
+      expect(after.state).toBe(WhatsappMessageState.QUEUED);
+      expect(after.attemptCount).toBe(0);
+      expect(after.claimedAt).toBeNull();
+    });
+
+    it('stops invitations at the daily limit; they wait in the queue', async () => {
+      const limiter = sender as unknown as { dailyLimit: number };
+      const configured = limiter.dailyLimit;
+      limiter.dailyLimit = 1_000_000;
+      const used = 1_000_000 - (await sender.invitationBudget());
+      limiter.dailyLimit = used + 2; // room for exactly two more in the window
+      let eventId = '';
+      try {
+        eventId = await dueCampaign();
+        meta.reset();
+        await sweep();
+        expect(meta.sent).toHaveLength(2);
+        expect(await sender.invitationBudget()).toBe(0);
+        expect(
+          await messages().countBy({
+            eventId,
+            state: WhatsappMessageState.QUEUED,
+          }),
+        ).toBe(1);
+        expect(
+          (await events().findOneByOrFail({ id: eventId })).campaignStatus,
+        ).toBe(EventCampaignStatus.SENDING);
+
+        meta.reset();
+        await sweep();
+        expect(meta.sent).toHaveLength(0);
+      } finally {
+        limiter.dailyLimit = configured;
+        // Later tests must not send this campaign's leftover.
+        await messages().update(
+          { eventId, state: WhatsappMessageState.QUEUED },
+          { state: WhatsappMessageState.CANCELLED },
+        );
+      }
+    });
+
     it('a queued QR image goes out before queued campaign invitations', async () => {
       const eventId = await dueCampaign();
       await app.get(WhatsappSweeperJob).run(60_000); // queue the campaign, send nothing

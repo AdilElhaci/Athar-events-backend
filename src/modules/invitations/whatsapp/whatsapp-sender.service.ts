@@ -11,6 +11,7 @@ import {
 } from '../../checkin/qr-token';
 import {
   Event,
+  EventCampaignStatus,
   EventPaymentStatus,
   EventStatus,
 } from '../../events/entities/event.entity';
@@ -31,7 +32,9 @@ const MAX_ATTEMPTS = 3;
 /** Meta's customer-service window is 24 h from the guest's reply; keep a margin. */
 const WINDOW_MS = 23 * 60 * 60 * 1000;
 
-type Prepared = SendOutcome | { outcome: 'CANCELLED'; code: string };
+/** `HOLD`: the campaign was paused after the claim; the intent goes back to the queue untouched. */
+type Prepared =
+  SendOutcome | { outcome: 'CANCELLED'; code: string } | { outcome: 'HOLD' };
 
 export class TracerError extends Error {}
 
@@ -49,6 +52,8 @@ export const qrKey = (guestId: string, qrVersion: number) =>
 export class WhatsappSenderService {
   private readonly logger = new Logger(WhatsappSenderService.name);
   private readonly appOrigin: string;
+  private readonly dailyLimit: number;
+  private limitWarnedAt = 0;
 
   constructor(
     @InjectRepository(WhatsappMessage)
@@ -61,6 +66,9 @@ export class WhatsappSenderService {
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.appOrigin = config.get('APP_ORIGIN', { infer: true });
+    this.dailyLimit = config.get('WHATSAPP_DAILY_INVITATION_LIMIT', {
+      infer: true,
+    });
   }
 
   /**
@@ -153,24 +161,76 @@ export class WhatsappSenderService {
   /**
    * One chunk of queued intents: campaign invitations and anything not picked up inline (crash,
    * retry-later). QR images first, so an accepted guest never waits behind a campaign; then oldest.
+   * Invitations of a paused campaign wait, and invitations stop at the rolling daily limit
+   * (`WHATSAPP_DAILY_INVITATION_LIMIT`); both stay `QUEUED`. Returns how many were taken.
    */
   async processQueued(limit = 50, settleMs = 10_000): Promise<number> {
-    const due = await this.messages
+    const settled = new Date(Date.now() - settleMs);
+    const others = await this.queued('others', limit, settled);
+    const budget = await this.invitationBudget();
+    const room = Math.min(limit - others.length, budget);
+    const invitations =
+      room > 0 ? await this.queued('invitations', room, settled) : [];
+    if (budget === 0) await this.warnLimitReached(settled);
+    for (const id of [...others, ...invitations]) await this.process(id);
+    return others.length + invitations.length;
+  }
+
+  /** Invitations still allowed in the rolling 24 h; `Infinity` without a limit. */
+  async invitationBudget(): Promise<number> {
+    if (!this.dailyLimit) return Infinity;
+    const [row] = await this.messages.query<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM whatsapp_messages
+        WHERE kind = $1
+          AND (state = $2 OR (state IN ($3, $4) AND coalesce(sent_at, claimed_at) > now() - interval '24 hours'))`,
+      [
+        WhatsappMessageKind.INVITATION,
+        WhatsappMessageState.SENDING,
+        WhatsappMessageState.SENT,
+        WhatsappMessageState.UNKNOWN,
+      ],
+    );
+    return Math.max(0, this.dailyLimit - row.n);
+  }
+
+  private async queued(
+    which: 'invitations' | 'others',
+    limit: number,
+    settled: Date,
+  ): Promise<string[]> {
+    const query = this.messages
       .createQueryBuilder('m')
       .select('m.id', 'id')
       .where('m.state = :queued AND m.updated_at < :settled', {
         queued: WhatsappMessageState.QUEUED,
-        settled: new Date(Date.now() - settleMs),
+        settled,
       })
-      .orderBy(
-        `CASE WHEN m.kind = '${WhatsappMessageKind.INVITATION}' THEN 1 ELSE 0 END`,
-        'ASC',
-      )
-      .addOrderBy('m.created_at', 'ASC')
-      .limit(limit)
-      .getRawMany<{ id: string }>();
-    for (const { id } of due) await this.process(id);
-    return due.length;
+      .orderBy('m.created_at', 'ASC')
+      .limit(limit);
+    if (which === 'others')
+      query.andWhere('m.kind <> :invitation', {
+        invitation: WhatsappMessageKind.INVITATION,
+      });
+    else
+      query
+        .innerJoin(Event, 'e', 'e.id = m.event_id')
+        .andWhere('m.kind = :invitation AND e.campaign_status <> :paused', {
+          invitation: WhatsappMessageKind.INVITATION,
+          paused: EventCampaignStatus.PAUSED,
+        });
+    const rows = await query.getRawMany<{ id: string }>();
+    return rows.map((row) => row.id);
+  }
+
+  /** At most every 10 minutes, and only when invitations are actually waiting. */
+  private async warnLimitReached(settled: Date): Promise<void> {
+    if (Date.now() - this.limitWarnedAt < 10 * 60_000) return;
+    const waiting = await this.queued('invitations', 1, settled);
+    if (!waiting.length) return;
+    this.limitWarnedAt = Date.now();
+    this.logger.warn(
+      `Daily invitation limit (${this.dailyLimit}) reached; queued invitations wait for the next window`,
+    );
   }
 
   private async deliver(message: WhatsappMessage): Promise<Prepared> {
@@ -198,6 +258,8 @@ export class WhatsappSenderService {
     guest: Guest,
     event: Event,
   ): Promise<Prepared> {
+    if (event.campaignStatus === EventCampaignStatus.PAUSED)
+      return { outcome: 'HOLD' };
     if (message.scheduleVersion !== event.scheduleVersion)
       return { outcome: 'CANCELLED', code: 'schedule_changed' };
     const content = event.approvedContentId
@@ -263,6 +325,19 @@ export class WhatsappSenderService {
   private async record(message: WhatsappMessage, result: Prepared) {
     const where = { id: message.id, state: WhatsappMessageState.SENDING };
     switch (result.outcome) {
+      case 'HOLD':
+        // Not an attempt: undo the claim's count so a pause never uses up retries.
+        await this.messages
+          .createQueryBuilder()
+          .update()
+          .set({
+            state: WhatsappMessageState.QUEUED,
+            claimedAt: null,
+            attemptCount: () => 'attempt_count - 1',
+          })
+          .where(where)
+          .execute();
+        return;
       case 'SENT':
         await this.messages
           .createQueryBuilder()

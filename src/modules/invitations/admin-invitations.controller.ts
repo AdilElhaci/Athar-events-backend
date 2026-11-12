@@ -105,4 +105,33 @@ export class AdminInvitationsController {
     const [event, stage] = await this.events.get(id);
     return withMessage(toAdminEventView(event, stage), 'campaign.unscheduled');
   }
+
+  @Post('pause')
+  @HttpCode(200)
+  @UseGuards(CsrfGuard)
+  @ApiOperation({
+    summary: 'Stop sending; queued invitations wait for resume.',
+  })
+  async pause(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UnscheduleDto,
+  ) {
+    await this.invitations.pause(user.id, id, dto.reason);
+    const [event, stage] = await this.events.get(id);
+    return withMessage(toAdminEventView(event, stage), 'campaign.paused');
+  }
+
+  @Post('resume')
+  @HttpCode(200)
+  @UseGuards(CsrfGuard)
+  @ApiOperation({ summary: 'Continue a paused campaign.' })
+  async resume(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    await this.invitations.resume(user.id, id);
+    const [event, stage] = await this.events.get(id);
+    return withMessage(toAdminEventView(event, stage), 'campaign.resumed');
+  }
 }
