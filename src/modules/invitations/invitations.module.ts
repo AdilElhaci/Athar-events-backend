@@ -28,6 +28,8 @@ import { WhatsappSweeperJob } from './whatsapp/whatsapp-sweeper.job';
 import { WhatsappWebhookController } from './whatsapp/whatsapp-webhook.controller';
 import { WhatsappTemplatesService } from './whatsapp/whatsapp-templates.service';
 import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
+import { WhatsappDemoController } from './whatsapp/whatsapp-demo.controller';
+import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
 
 @Module({
   imports: [
@@ -52,6 +54,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     AdminMessagesController,
     AdminInboxController,
     AdminReplacementsController,
+    WhatsappDemoController,
   ],
   providers: [
     InvitationsService,
@@ -65,6 +68,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     MessagesService,
     InboxService,
     ReplacementsService,
+    WhatsappDemoService,
   ],
 })
 export class InvitationsModule {}

@@ -22,4 +22,5 @@ Object.assign(process.env, {
   WHATSAPP_ACCESS_TOKEN: 'test-whatsapp-token',
   WHATSAPP_APP_SECRET: 'test-whatsapp-app-secret-0123456789',
   WHATSAPP_VERIFY_TOKEN: 'test-whatsapp-verify-token-0123',
+  WHATSAPP_DEMO_NUMBER: '966500000000',
 });

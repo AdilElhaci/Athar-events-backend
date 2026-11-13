@@ -182,6 +182,9 @@ export const MESSAGES = {
     'يوجد في Meta قالب بهذا الاسم وهذه اللغة، أو حُذف قبل أقل من 30 يوماً.',
   'whatsapp.template_create_failed': 'رفضت Meta إنشاء القالب.',
   'whatsapp.template_delete_failed': 'تعذّر حذف القالب من Meta.',
+  'demo.unavailable': 'تجربة الدعوة غير متاحة الآن، حاول لاحقاً.',
+  'demo.expired': 'انتهت مدة التجربة، ابدأ من جديد.',
+  'demo.not_ready': 'افتح رمز الدخول في واتساب أولاً.',
   'user.phone_invalid':
     'رقم الجوال غير صحيح. أدخل رقماً سعودياً مثل 05XXXXXXXX.',
 } as const;

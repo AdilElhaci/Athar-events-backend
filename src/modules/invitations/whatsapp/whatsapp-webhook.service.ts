@@ -21,6 +21,7 @@ import {
   WhatsappMessageKind,
   WhatsappMessageState,
 } from '../entities/whatsapp-message.entity';
+import { DemoInbound, WhatsappDemoService } from './whatsapp-demo.service';
 import {
   qrKey,
   RSVP_ACCEPT,
@@ -79,6 +80,7 @@ export class WhatsappWebhookService {
     @InjectRepository(WhatsappMessage)
     private readonly messages: Repository<WhatsappMessage>,
     private readonly sender: WhatsappSenderService,
+    private readonly demo: WhatsappDemoService,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.appSecret = config.get('WHATSAPP_APP_SECRET', { infer: true }) ?? null;
@@ -113,6 +115,7 @@ export class WhatsappWebhookService {
   async handle(body: unknown): Promise<WebhookSummary> {
     const summary: WebhookSummary = { statuses: 0, messages: 0 };
     const kicks: string[] = [];
+    const demos: DemoInbound[] = [];
     if (str(obj(body)?.object) !== 'whatsapp_business_account') return summary;
 
     for (const entry of arr(obj(body)?.entry)) {
@@ -124,8 +127,9 @@ export class WhatsappWebhookService {
           summary.statuses++;
         }
         for (const message of arr(value?.messages)) {
-          const intentId = await this.applyMessage(obj(message));
+          const { intentId, demo } = await this.applyMessage(obj(message));
           if (intentId) kicks.push(intentId);
+          if (demo) demos.push(demo);
           summary.messages++;
         }
       }
@@ -137,6 +141,8 @@ export class WhatsappWebhookService {
         .catch((error: Error) =>
           this.logger.warn(`QR intent ${id} kick failed: ${error.name}`),
         );
+    // The public demo (/try-whatsapp) answers after commit too; it never throws.
+    for (const inbound of demos) void this.demo.onInbound(inbound);
     return summary;
   }
 
@@ -242,13 +248,15 @@ export class WhatsappWebhookService {
 
   /**
    * One inbound message, recorded and applied in a single transaction: the unique inbound id makes
-   * a retried delivery a no-op. Returns a QR intent to send after commit, if one was created.
+   * a retried delivery a no-op. Returns a QR intent to send after commit, if one was created, and
+   * the message for the public demo when it may belong to one (text or a reply button).
    */
   private async applyMessage(
     message: Json | undefined,
-  ): Promise<string | null> {
+  ): Promise<{ intentId: string | null; demo: DemoInbound | null }> {
+    const nothing = { intentId: null, demo: null };
     const providerId = str(message?.id);
-    if (!providerId || !ID_PATTERN.test(providerId)) return null;
+    if (!providerId || !ID_PATTERN.test(providerId)) return nothing;
     const fromDigits = str(message?.from);
     const fromPhone =
       fromDigits && PHONE_DIGITS.test(fromDigits) ? `+${fromDigits}` : null;
@@ -256,13 +264,18 @@ export class WhatsappWebhookService {
     const type = str(message?.type);
     const payload =
       type === 'button' ? str(obj(message?.button)?.payload) : undefined;
+    // Reply buttons on a free-form message (the public demo); templates use `button` instead.
+    const buttonReply =
+      type === 'interactive'
+        ? obj(obj(message?.interactive)?.button_reply)
+        : undefined;
     // D-43: what the guest wrote (or the button label) is kept for the admin replies inbox.
     const body =
       type === 'text'
         ? str(obj(message?.text)?.body)
         : type === 'button'
           ? str(obj(message?.button)?.text)
-          : undefined;
+          : str(buttonReply?.title);
     const metaType = type && /^[a-z_]{1,20}$/.test(type) ? type : null;
 
     return this.db.transaction(async (manager) => {
@@ -290,7 +303,7 @@ export class WhatsappWebhookService {
         .returning(['id'])
         .execute();
       const inboundId = (inserted.raw as Array<{ id: string }>)[0]?.id;
-      if (!inboundId) return null; // already handled
+      if (!inboundId) return nothing; // already handled
 
       const reply = await this.applyReply(manager, {
         payload,
@@ -309,7 +322,15 @@ export class WhatsappWebhookService {
         guestId: guest?.id ?? null,
         eventId: guest?.eventId ?? null,
       });
-      return intentId;
+      const demo: DemoInbound | null =
+        fromPhone && (type === 'text' || buttonReply)
+          ? {
+              fromPhone,
+              text: type === 'text' ? body : undefined,
+              buttonId: str(buttonReply?.id),
+            }
+          : null;
+      return { intentId, demo };
     });
   }
 

@@ -23,6 +23,15 @@ export interface TemplateMessage {
   quickReplyPayloads: string[];
 }
 
+/** A free-form message with reply buttons (service window only). Button ids come back in the webhook. */
+export interface ButtonsMessage {
+  header?: string;
+  body: string;
+  footer?: string;
+  /** At most three; titles up to 20 characters (Meta's limits). */
+  buttons: Array<{ id: string; title: string }>;
+}
+
 export type UploadOutcome =
   { ok: true; mediaId: string } | { ok: false; retry: boolean; code: string };
 
@@ -91,6 +100,11 @@ export abstract class WhatsappClient {
   ): Promise<SendOutcome>;
   /** Free-form text; Meta accepts it only inside the 24 h customer-service window. */
   abstract sendText(to: string, body: string): Promise<SendOutcome>;
+  /** Reply buttons; like `sendText`, accepted only inside the 24 h customer-service window. */
+  abstract sendButtons(
+    to: string,
+    message: ButtonsMessage,
+  ): Promise<SendOutcome>;
   abstract uploadPng(png: Buffer): Promise<UploadOutcome>;
   abstract sendImage(
     to: string,
@@ -360,6 +374,27 @@ export class HttpWhatsappClient extends WhatsappClient {
       to: to.replace(/^\+/, ''),
       type: 'text',
       text: { body, preview_url: false },
+    });
+  }
+
+  sendButtons(to: string, message: ButtonsMessage): Promise<SendOutcome> {
+    return this.sendMessage({
+      to: to.replace(/^\+/, ''),
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        ...(message.header
+          ? { header: { type: 'text', text: message.header } }
+          : {}),
+        body: { text: message.body },
+        ...(message.footer ? { footer: { text: message.footer } } : {}),
+        action: {
+          buttons: message.buttons.map((b) => ({
+            type: 'reply',
+            reply: { id: b.id, title: b.title },
+          })),
+        },
+      },
     });
   }
 

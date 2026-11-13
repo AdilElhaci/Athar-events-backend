@@ -1,4 +1,5 @@
 import {
+  ButtonsMessage,
   MessageTemplate,
   NewTemplate,
   SendOutcome,
@@ -12,7 +13,8 @@ import {
 export type FakeSent =
   | { type: 'template'; to: string; template: TemplateMessage; id: string }
   | { type: 'image'; to: string; mediaId: string; caption: string; id: string }
-  | { type: 'text'; to: string; body: string; id: string };
+  | { type: 'text'; to: string; body: string; id: string }
+  | { type: 'buttons'; to: string; message: ButtonsMessage; id: string };
 
 /**
  * In-memory Meta for tests. Every accepted message gets a `wamid.test.<n>` id; set `nextOutcome`
@@ -95,6 +97,10 @@ export class FakeWhatsappClient extends WhatsappClient {
 
   sendText(to: string, body: string): Promise<SendOutcome> {
     return this.accept((id) => ({ type: 'text', to, body, id }));
+  }
+
+  sendButtons(to: string, message: ButtonsMessage): Promise<SendOutcome> {
+    return this.accept((id) => ({ type: 'buttons', to, message, id }));
   }
 
   uploadPng(png: Buffer): Promise<UploadOutcome> {

@@ -209,6 +209,19 @@ export class EnvironmentVariables {
   WHATSAPP_DAILY_INVITATION_LIMIT = 1000;
 
   /**
+   * The WhatsApp number visitors write to for the public demo (/try-whatsapp), digits only
+   * (e.g. 9665XXXXXXXX): the business number behind WHATSAPP_PHONE_NUMBER_ID. Empty turns the demo off.
+   */
+  @IsOptional()
+  @Matches(/^\d{8,15}$/)
+  WHATSAPP_DEMO_NUMBER?: string;
+
+  /** Demos started (code received) in any rolling 24 h, all visitors together. 0 = no limit. */
+  @IsInt()
+  @Min(0)
+  WHATSAPP_DEMO_DAILY_LIMIT = 200;
+
+  /**
    * Comma-separated roles this process runs (D-09): `api` (HTTP), `worker` (BullMQ processors),
    * `scheduler` (sweepers, reconciliation, alerts). One container runs all three by default.
    */
