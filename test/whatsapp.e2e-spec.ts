@@ -558,6 +558,112 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
       expect((await reloadGuest(guest.id)).rsvp).toBe(GuestRsvp.DECLINED);
     });
   });
+
+  describe('replies inbox (D-43)', () => {
+    const textHook = (
+      body: string,
+      opts: { from?: string; context?: string; type?: string } = {},
+    ) => {
+      const id = `wamid.in.${++inboundSeq}`;
+      const type = opts.type ?? 'text';
+      return post(
+        envelope({
+          messages: [
+            {
+              from: (opts.from ?? PHONE).slice(1),
+              id,
+              timestamp: String(Math.floor(Date.now() / 1000)),
+              type,
+              ...(opts.context && {
+                context: { from: '15556393093', id: opts.context },
+              }),
+              ...(type === 'text'
+                ? { text: { body } }
+                : { image: { id: 'x' } }),
+            },
+          ],
+        }),
+      )
+        .expect(200)
+        .then(() => id);
+    };
+
+    it('keeps the button label with the RSVP guest and event', async () => {
+      const { guest, wamid } = await invited({ phone: '+966511110001' });
+      const id = await replyHook(wamid, 'RSVP_DECLINE', {
+        from: '+966511110001',
+      });
+      await settle(guest.id);
+      const row = await inbound(id);
+      expect(row.outcome).toBe(WhatsappInboundOutcome.APPLIED);
+      expect(row).toMatchObject({
+        guestId: guest.id,
+        eventId: guest.eventId,
+        body: 'x',
+        metaType: 'button',
+      });
+    });
+
+    it('keeps free text and ties it to the guest of the quoted message, else the latest invite', async () => {
+      const phone = '+966511110002';
+      const older = await invited({ phone });
+      const newer = await invited({ phone });
+
+      const quoted = await textHook('هل يمكن إحضار طفل؟', {
+        from: phone,
+        context: older.wamid,
+      });
+      const plain = await textHook('شكراً على الدعوة', { from: phone });
+      const media = await textHook('', { from: phone, type: 'image' });
+
+      expect(await inbound(quoted)).toMatchObject({
+        outcome: WhatsappInboundOutcome.IGNORED,
+        body: 'هل يمكن إحضار طفل؟',
+        guestId: older.guest.id,
+        eventId: older.guest.eventId,
+      });
+      expect(await inbound(plain)).toMatchObject({
+        body: 'شكراً على الدعوة',
+        guestId: newer.guest.id,
+        eventId: newer.guest.eventId,
+      });
+      expect(await inbound(media)).toMatchObject({
+        body: null,
+        metaType: 'image',
+        guestId: newer.guest.id,
+      });
+      // Text never changes the RSVP.
+      expect((await reloadGuest(newer.guest.id)).rsvp).toBe(GuestRsvp.PENDING);
+    });
+
+    it('does not tie a message to a guest it did not come from', async () => {
+      const { wamid } = await invited({ phone: '+966511110003' });
+      const stranger = await textHook('مرحبا', {
+        from: '+966599999999',
+        context: wamid,
+      });
+      const wrongRsvp = await replyHook(wamid, 'RSVP_ACCEPT', {
+        from: '+966599999999',
+      });
+      expect(await inbound(stranger)).toMatchObject({
+        guestId: null,
+        eventId: null,
+        body: 'مرحبا',
+      });
+      expect(await inbound(wrongRsvp)).toMatchObject({
+        outcome: WhatsappInboundOutcome.UNMATCHED,
+        guestId: null,
+        eventId: null,
+      });
+    });
+
+    it('caps a long text at 4096 characters', async () => {
+      const phone = '+966511110004';
+      await invited({ phone });
+      const id = await textHook('أ'.repeat(5000), { from: phone });
+      expect((await inbound(id)).body).toHaveLength(4096);
+    });
+  });
   describe('scheduled campaigns (SP-04 sending)', () => {
     const sweep = () => app.get(WhatsappSweeperJob).run(-1);
     const events = () => db.getRepository(Event);

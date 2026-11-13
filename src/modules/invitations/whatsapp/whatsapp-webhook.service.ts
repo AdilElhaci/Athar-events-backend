@@ -195,7 +195,32 @@ export class WhatsappWebhookService {
         })
         .setParameter('at', at);
     }
-    const result = await update.execute();
+    let result = await update.execute();
+    // Not one of ours from the sender: maybe an admin's free-form reply (D-44), same rule.
+    if (!result.affected)
+      result = await this.db
+        .query<[unknown, number]>(
+          next === WhatsappDeliveryStatus.FAILED
+            ? `UPDATE whatsapp_replies
+                SET delivery_status = 'FAILED', failed_at = $2, error_code = $3, updated_at = now()
+              WHERE provider_message_id = $1 AND delivery_status IN ('NONE', 'SENT')`
+            : `UPDATE whatsapp_replies
+                SET delivery_status = $3::whatsapp_delivery_status,
+                    delivered_at = CASE WHEN $3 <> 'SENT' THEN COALESCE(delivered_at, $2) ELSE delivered_at END,
+                    read_at = CASE WHEN $3 = 'READ' THEN COALESCE(read_at, $2) ELSE read_at END,
+                    updated_at = now()
+              WHERE provider_message_id = $1 AND delivery_status < $3::whatsapp_delivery_status`,
+          [
+            id,
+            at,
+            next === WhatsappDeliveryStatus.FAILED
+              ? typeof code === 'number'
+                ? `meta_${code}`
+                : 'meta_failed'
+              : next,
+          ],
+        )
+        .then(([, affected]) => ({ affected, raw: [], generatedMaps: [] }));
     // Meta's failure code is the only way to learn why a message was not delivered,
     // including for messages sent outside the platform (manual tests). Code only, never a payload.
     const errorCode =
@@ -231,6 +256,14 @@ export class WhatsappWebhookService {
     const type = str(message?.type);
     const payload =
       type === 'button' ? str(obj(message?.button)?.payload) : undefined;
+    // D-43: what the guest wrote (or the button label) is kept for the admin replies inbox.
+    const body =
+      type === 'text'
+        ? str(obj(message?.text)?.body)
+        : type === 'button'
+          ? str(obj(message?.button)?.text)
+          : undefined;
+    const metaType = type && /^[a-z_]{1,20}$/.test(type) ? type : null;
 
     return this.db.transaction(async (manager) => {
       const inserted = await manager
@@ -249,6 +282,8 @@ export class WhatsappWebhookService {
                 ? WhatsappInboundType.TEXT
                 : WhatsappInboundType.OTHER,
           buttonPayload: payload?.slice(0, 64) ?? null,
+          body: body ? body.slice(0, 4096) : null,
+          metaType,
           outcome: WhatsappInboundOutcome.IGNORED,
         })
         .orIgnore()
@@ -257,14 +292,56 @@ export class WhatsappWebhookService {
       const inboundId = (inserted.raw as Array<{ id: string }>)[0]?.id;
       if (!inboundId) return null; // already handled
 
-      const { outcome, guestId, intentId } = await this.applyReply(manager, {
+      const reply = await this.applyReply(manager, {
         payload,
         contextId,
         fromPhone,
       });
-      await manager.update(WhatsappInbound, inboundId, { outcome, guestId });
+      const { outcome, intentId } = reply;
+      // Not an RSVP: tie it to a guest for the inbox only. An UNMATCHED RSVP stays unattributed.
+      const guest = reply.guestId
+        ? await manager.findOneBy(Guest, { id: reply.guestId })
+        : outcome === WhatsappInboundOutcome.IGNORED
+          ? await this.attribute(manager, contextId, fromPhone)
+          : null;
+      await manager.update(WhatsappInbound, inboundId, {
+        outcome,
+        guestId: guest?.id ?? null,
+        eventId: guest?.eventId ?? null,
+      });
       return intentId;
     });
+  }
+
+  /**
+   * The guest a non-RSVP message comes from: the guest of the message it quotes, else the live
+   * guest this number most recently received a message as. The phone must match either way.
+   */
+  private async attribute(
+    manager: EntityManager,
+    contextId: string | undefined,
+    fromPhone: string | null,
+  ): Promise<Guest | null> {
+    if (!fromPhone) return null;
+    if (contextId) {
+      const quoted = await manager.findOneBy(WhatsappMessage, {
+        providerMessageId: contextId,
+      });
+      if (quoted) {
+        const guest = await manager.findOneBy(Guest, { id: quoted.guestId });
+        if (guest && !guest.deletedAt && guest.phone === fromPhone)
+          return guest;
+      }
+    }
+    return manager
+      .getRepository(Guest)
+      .createQueryBuilder('g')
+      .innerJoin(WhatsappMessage, 'm', 'm.guestId = g.id')
+      .where('g.phone = :phone AND g.deletedAt IS NULL', { phone: fromPhone })
+      .andWhere('m.providerMessageId IS NOT NULL')
+      .orderBy('m.sentAt', 'DESC', 'NULLS LAST')
+      .addOrderBy('m.createdAt', 'DESC')
+      .getOne();
   }
 
   private async applyReply(

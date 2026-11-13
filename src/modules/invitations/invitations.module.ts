@@ -12,9 +12,11 @@ import { AdminReplacementsController } from './admin-replacements.controller';
 import { InvitationContent } from './entities/invitation-content.entity';
 import { WhatsappInbound } from './entities/whatsapp-inbound.entity';
 import { WhatsappMessage } from './entities/whatsapp-message.entity';
+import { WhatsappReply } from './entities/whatsapp-reply.entity';
 import { InvitationsService } from './invitations.service';
 import { MessagesService } from './messages.service';
 import { ReplacementsService } from './replacements.service';
+import { RepliesService } from './replies.service';
 import { OwnerInvitationController } from './owner-invitation.controller';
 import { AdminWhatsappTemplatesController } from './whatsapp/admin-whatsapp-templates.controller';
 import { HttpWhatsappClient, WhatsappClient } from './whatsapp/whatsapp.client';
@@ -32,6 +34,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
       InvitationContent,
       WhatsappMessage,
       WhatsappInbound,
+      WhatsappReply,
       WebhookReceipt,
       Guest,
       Event,
@@ -58,6 +61,7 @@ import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
     WhatsappQueue,
     WhatsappTemplatesService,
     MessagesService,
+    RepliesService,
     ReplacementsService,
   ],
 })

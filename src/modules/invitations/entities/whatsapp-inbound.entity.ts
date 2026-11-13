@@ -22,11 +22,15 @@ export enum WhatsappInboundOutcome {
   IGNORED = 'IGNORED',
 }
 
-/** Minimal record of one inbound message; free text is never stored (data-model.md). */
+/**
+ * One inbound message. Its text is kept for the admin replies inbox (D-43) and deleted with the
+ * row by the retention job (data-model.md).
+ */
 @Entity({ name: 'whatsapp_inbound' })
 @Index('UQ_whatsapp_inbound_provider_message_id', ['providerMessageId'], {
   unique: true,
 })
+@Index('IDX_whatsapp_inbound_event_received', ['eventId', 'receivedAt'])
 export class WhatsappInbound {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -62,8 +66,21 @@ export class WhatsappInbound {
   })
   buttonPayload!: string | null;
 
+  /** The RSVP guest, or for any other message the guest this number was last invited as. */
   @Column({ name: 'guest_id', type: 'uuid', nullable: true })
   guestId!: string | null;
+
+  /** The guest's event; null when the message could not be tied to a guest. */
+  @Column({ name: 'event_id', type: 'uuid', nullable: true })
+  eventId!: string | null;
+
+  /** Text of a text message, or the label of the button tapped; at most 4096 characters. */
+  @Column({ type: 'text', nullable: true })
+  body!: string | null;
+
+  /** Meta's message type (`text`, `button`, `image`, `audio`, …). */
+  @Column({ name: 'meta_type', type: 'varchar', length: 20, nullable: true })
+  metaType!: string | null;
 
   @Column({
     type: 'enum',

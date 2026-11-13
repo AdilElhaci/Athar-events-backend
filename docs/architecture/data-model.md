@@ -175,7 +175,7 @@ Quota invariants (enforced in one transaction holding `SELECT … FOR UPDATE` on
 
 ### whatsapp_inbound
 
-Minimal record of inbound button replies; free text is never stored.
+Inbound WhatsApp messages: RSVP button replies and, since [D-43](../product/decisions.md#d-43), the text guests write, for the admin replies inbox.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -184,9 +184,30 @@ Minimal record of inbound button replies; free text is never stored.
 | from_phone | varchar(16) | Normalised sender; compared with the guest's phone |
 | type | enum (`BUTTON`, `TEXT`, `OTHER`) | |
 | button_payload | varchar(64) null | `RSVP_ACCEPT` / `RSVP_DECLINE` |
-| guest_id | uuid null | When matched |
+| guest_id | uuid null | RSVP: the matched guest. Other messages: the guest of the quoted message, else the live guest this number last received a message as (phone must match); null for an unmatched RSVP |
+| event_id | uuid null | FK events; the guest's event; index (`event_id`, `received_at` desc) |
+| body | text null | Text of a text message or the tapped button's label, at most 4096 characters (D-43); null for media |
+| meta_type | varchar(20) null | Meta's message type (`text`, `button`, `image`, …) |
 | outcome | enum (`APPLIED`, `UNMATCHED`, `LOCKED`, `DUPLICATE`, `AFTER_EVENT`, `IGNORED`) | `IGNORED`: not an RSVP button (free text, media, unknown payload); a redelivered message is skipped by the unique id, so `DUPLICATE` is not written |
 | received_at | timestamptz | Deleted with guest data per retention ([OQ-10](../product/open-questions.md)) |
+
+### whatsapp_replies
+
+Free-form texts admins send to guests inside the 24 h window ([D-44](../product/decisions.md#d-44)).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| event_id, guest_id, sent_by_user_id | uuid | FKs (restrict); index (`event_id`, `created_at` desc) |
+| request_id | uuid | `UQ`; client-generated per submit, a repeat never sends twice |
+| to_phone | varchar(16) | Guest phone at send time |
+| body | text | 1–4096 characters (check) |
+| state | `whatsapp_message_state` | `SENDING`, `SENT`, `FAILED`, `UNKNOWN` only (check); never retried |
+| delivery_status | `whatsapp_delivery_status` | Monotonic from status webhooks |
+| provider_message_id | varchar(128) null | Partial `UQ` |
+| error_code | varchar(60) null | Provider code only |
+| sent_at, delivered_at, read_at, failed_at, created_at, updated_at | timestamptz | |
+
+Retention: deleted with `whatsapp_inbound` (90 days after the event). Index `whatsapp_inbound (from_phone, received_at desc)` serves the window check.
 
 ### webhook_receipts
 

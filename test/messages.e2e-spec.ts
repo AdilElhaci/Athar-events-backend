@@ -20,10 +20,17 @@ import {
 import { Guest, GuestRsvp } from '../src/modules/guests/entities/guest.entity';
 import { InvitationContent } from '../src/modules/invitations/entities/invitation-content.entity';
 import {
+  WhatsappInbound,
+  WhatsappInboundOutcome,
+  WhatsappInboundType,
+} from '../src/modules/invitations/entities/whatsapp-inbound.entity';
+import {
   WhatsappMessage,
   WhatsappMessageKind,
   WhatsappMessageState,
 } from '../src/modules/invitations/entities/whatsapp-message.entity';
+import { WhatsappReply } from '../src/modules/invitations/entities/whatsapp-reply.entity';
+import { WhatsappWebhookService } from '../src/modules/invitations/whatsapp/whatsapp-webhook.service';
 import { FakeWhatsappClient } from '../src/modules/invitations/whatsapp/testing/fake-whatsapp.client';
 import { WhatsappClient } from '../src/modules/invitations/whatsapp/whatsapp.client';
 import { WhatsappSweeperJob } from '../src/modules/invitations/whatsapp/whatsapp-sweeper.job';
@@ -396,5 +403,240 @@ describe('Message log and resolution (e2e, SCR-25)', () => {
     await csrf(server().post(`/api/admin/messages/${intent.id}/resolve`))
       .send({ resolution: 'MARK_SENT', reason: 'x' })
       .expect(401);
+  });
+
+  it('D-43: lists an event’s replies, newest first, with the guest and a type filter', async () => {
+    const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
+    const other = await sentInvitation(WhatsappMessageState.SENT);
+    const inbound = db.getRepository(WhatsappInbound);
+    let seq = 0;
+    const save = (row: Partial<WhatsappInbound>) =>
+      inbound.save(
+        inbound.create({
+          providerMessageId: `wamid.reply.${++seq}`,
+          fromPhone: guest.phone,
+          guestId: guest.id,
+          eventId: event.id,
+          outcome: WhatsappInboundOutcome.IGNORED,
+          ...row,
+        }),
+      );
+    await save({
+      type: WhatsappInboundType.BUTTON,
+      metaType: 'button',
+      body: 'سأحضر',
+      buttonPayload: 'RSVP_ACCEPT',
+      outcome: WhatsappInboundOutcome.APPLIED,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    await save({
+      type: WhatsappInboundType.TEXT,
+      metaType: 'text',
+      body: 'هل الموقف متاح؟',
+    });
+    await save({
+      type: WhatsappInboundType.TEXT,
+      metaType: 'text',
+      body: 'لمناسبة أخرى',
+      guestId: other.guest.id,
+      eventId: other.event.id,
+    });
+
+    const url = `/api/admin/events/${event.id}/replies`;
+    const all = await asAdmin(server().get(url)).expect(200);
+    expect(all.body.data.meta.total).toBe(2);
+    expect(all.body.data.items[0]).toMatchObject({
+      type: 'TEXT',
+      body: 'هل الموقف متاح؟',
+      guestName: 'محمد العتيبي',
+      guestPhone: guest.phone,
+      outcome: 'IGNORED',
+    });
+    expect(all.body.data.items[1]).toMatchObject({
+      type: 'BUTTON',
+      body: 'سأحضر',
+      outcome: 'APPLIED',
+    });
+
+    const texts = await asAdmin(server().get(`${url}?type=TEXT`)).expect(200);
+    expect(texts.body.data.items).toHaveLength(1);
+    await asAdmin(server().get(`${url}?type=NOPE`)).expect(400);
+    await server().get(url).expect(401);
+    await asAdmin(
+      server().get(
+        '/api/admin/events/00000000-0000-4000-8000-000000000000/replies',
+      ),
+    ).expect(404);
+  });
+
+  describe('D-44: admin replies inside the 24 h window', () => {
+    let seq = 0;
+    const guestWrote = (guest: Guest, eventId: string, agoMs: number) =>
+      db.getRepository(WhatsappInbound).save(
+        db.getRepository(WhatsappInbound).create({
+          providerMessageId: `wamid.guest.${++seq}`,
+          fromPhone: guest.phone,
+          guestId: guest.id,
+          eventId,
+          type: WhatsappInboundType.TEXT,
+          metaType: 'text',
+          body: 'هل الموقف متاح؟',
+          outcome: WhatsappInboundOutcome.IGNORED,
+          receivedAt: new Date(Date.now() - agoMs),
+        }),
+      );
+    const send = (eventId: string, body: object) =>
+      csrf(asAdmin(server().post(`/api/admin/events/${eventId}/replies`))).send(
+        body,
+      );
+    const uuid = () => crypto.randomUUID();
+
+    it('sends once per request id and shows in the conversation', async () => {
+      const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
+      await guestWrote(guest, event.id, 60 * 60_000);
+      const requestId = uuid();
+      const first = await send(event.id, {
+        guestId: guest.id,
+        requestId,
+        text: '  نعم، الموقف متاح للضيوف  ',
+      }).expect(200);
+      expect(first.body.code).toBe('replies.sent');
+      expect(first.body.data).toMatchObject({
+        direction: 'OUT',
+        state: 'SENT',
+        body: 'نعم، الموقف متاح للضيوف',
+        sentByName: 'المدير',
+        guestPhone: guest.phone,
+      });
+      const again = await send(event.id, {
+        guestId: guest.id,
+        requestId,
+        text: 'نعم، الموقف متاح للضيوف',
+      }).expect(200);
+      expect(again.body.data.id).toBe(first.body.data.id);
+      const texts = meta.sent.filter((m) => m.type === 'text');
+      expect(texts).toEqual([
+        expect.objectContaining({
+          to: guest.phone,
+          body: 'نعم، الموقف متاح للضيوف',
+        }),
+      ]);
+
+      const list = await asAdmin(
+        server().get(`/api/admin/events/${event.id}/replies`),
+      ).expect(200);
+      expect(list.body.data.meta.total).toBe(2);
+      expect(
+        list.body.data.items.map((r: { direction: string }) => r.direction),
+      ).toEqual(['OUT', 'IN']);
+      expect(
+        new Date(list.body.data.items[1].replyWindowClosesAt).getTime(),
+      ).toBeGreaterThan(Date.now());
+      const buttons = await asAdmin(
+        server().get(`/api/admin/events/${event.id}/replies?type=BUTTON`),
+      ).expect(200);
+      expect(buttons.body.data.meta.total).toBe(0);
+
+      // Delivery statuses reach the reply, forward only.
+      const wamid = (
+        await db
+          .getRepository(WhatsappReply)
+          .findOneByOrFail({ id: first.body.data.id })
+      ).providerMessageId!;
+      const hook = (status: string) =>
+        app.get(WhatsappWebhookService).handle({
+          object: 'whatsapp_business_account',
+          entry: [
+            {
+              changes: [
+                {
+                  field: 'messages',
+                  value: {
+                    statuses: [
+                      {
+                        id: wamid,
+                        status,
+                        timestamp: String(Math.floor(Date.now() / 1000)),
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        });
+      await hook('read');
+      await hook('delivered');
+      const row = await db
+        .getRepository(WhatsappReply)
+        .findOneByOrFail({ id: first.body.data.id });
+      expect(row.deliveryStatus).toBe('READ');
+      expect(row.readAt).not.toBeNull();
+      expect(row.deliveredAt).not.toBeNull();
+    });
+
+    it('refuses outside the window, for another event’s guest, or empty text', async () => {
+      const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
+      const other = await sentInvitation(WhatsappMessageState.SENT);
+      const body = { guestId: guest.id, requestId: uuid(), text: 'مرحباً' };
+      expect((await send(event.id, body).expect(422)).body.code).toBe(
+        'replies.window_closed',
+      );
+      await guestWrote(guest, event.id, 23 * 60 * 60_000 + 60_000);
+      expect(
+        (await send(event.id, { ...body, requestId: uuid() }).expect(422)).body
+          .code,
+      ).toBe('replies.window_closed');
+      await guestWrote(other.guest, other.event.id, 60_000);
+      await send(event.id, {
+        guestId: other.guest.id,
+        requestId: uuid(),
+        text: 'مرحباً',
+      }).expect(404);
+      await send(other.event.id, {
+        guestId: other.guest.id,
+        requestId: uuid(),
+        text: '   ',
+      }).expect(400);
+      expect(meta.sent.filter((m) => m.type === 'text')).toHaveLength(0);
+      expect(
+        await db.getRepository(WhatsappReply).countBy({ eventId: event.id }),
+      ).toBe(0);
+    });
+
+    it('records a failure (422) and an unknown outcome (200) without retrying', async () => {
+      const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
+      await guestWrote(guest, event.id, 60_000);
+      meta.nextOutcome = { outcome: 'FAILED', code: 'meta_131047' };
+      const failed = { guestId: guest.id, requestId: uuid(), text: 'أولى' };
+      expect((await send(event.id, failed).expect(422)).body.code).toBe(
+        'replies.window_closed',
+      );
+      // The same submit again reports the same failure and sends nothing.
+      expect((await send(event.id, failed).expect(422)).body.code).toBe(
+        'replies.window_closed',
+      );
+      expect(meta.sent.filter((m) => m.type === 'text')).toHaveLength(0);
+      meta.nextOutcome = { outcome: 'UNKNOWN', code: 'ETIMEDOUT' };
+      const unknown = await send(event.id, {
+        guestId: guest.id,
+        requestId: uuid(),
+        text: 'ثانية',
+      }).expect(200);
+      expect(unknown.body.code).toBe('replies.unknown');
+      expect(unknown.body.data.state).toBe('UNKNOWN');
+      const rows = await db
+        .getRepository(WhatsappReply)
+        .find({ where: { eventId: event.id }, order: { createdAt: 'ASC' } });
+      expect(rows.map((r) => [r.state, r.errorCode])).toEqual([
+        ['FAILED', 'meta_131047'],
+        ['UNKNOWN', 'ETIMEDOUT'],
+      ]);
+      const actions = await db
+        .getRepository(AdminAction)
+        .findBy({ action: 'reply.send' });
+      expect(actions.length).toBeGreaterThanOrEqual(2);
+      expect(JSON.stringify(actions)).not.toContain('أولى');
+    });
   });
 });

@@ -89,6 +89,8 @@ export abstract class WhatsappClient {
     to: string,
     template: TemplateMessage,
   ): Promise<SendOutcome>;
+  /** Free-form text; Meta accepts it only inside the 24 h customer-service window. */
+  abstract sendText(to: string, body: string): Promise<SendOutcome>;
   abstract uploadPng(png: Buffer): Promise<UploadOutcome>;
   abstract sendImage(
     to: string,
@@ -350,6 +352,14 @@ export class HttpWhatsappClient extends WhatsappClient {
           })),
         ],
       },
+    });
+  }
+
+  sendText(to: string, body: string): Promise<SendOutcome> {
+    return this.sendMessage({
+      to: to.replace(/^\+/, ''),
+      type: 'text',
+      text: { body, preview_url: false },
     });
   }
 
