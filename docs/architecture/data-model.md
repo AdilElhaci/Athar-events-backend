@@ -188,16 +188,18 @@ Inbound WhatsApp messages: RSVP button replies and, since [D-43](../product/deci
 | event_id | uuid null | FK events; the guest's event; index (`event_id`, `received_at` desc) |
 | body | text null | Text of a text message or the tapped button's label, at most 4096 characters (D-43); null for media |
 | meta_type | varchar(20) null | Meta's message type (`text`, `button`, `image`, …) |
+| seen_at | timestamptz null | Set when an admin opens or answers the conversation (D-45); null and not `BUTTON` = unread; partial index on `from_phone` |
 | outcome | enum (`APPLIED`, `UNMATCHED`, `LOCKED`, `DUPLICATE`, `AFTER_EVENT`, `IGNORED`) | `IGNORED`: not an RSVP button (free text, media, unknown payload); a redelivered message is skipped by the unique id, so `DUPLICATE` is not written |
 | received_at | timestamptz | Deleted with guest data per retention ([OQ-10](../product/open-questions.md)) |
 
 ### whatsapp_replies
 
-Free-form texts admins send to guests inside the 24 h window ([D-44](../product/decisions.md#d-44)).
+Free-form texts admins send from the inbox inside the 24 h window ([D-44](../product/decisions.md#d-44), [D-45](../product/decisions.md#d-45)). Indexes (`event_id`, `created_at` desc) and (`to_phone`, `created_at` desc).
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| event_id, guest_id, sent_by_user_id | uuid | FKs (restrict); index (`event_id`, `created_at` desc) |
+| event_id, guest_id | uuid null | FKs (restrict); the guest the number belongs to, null for any other number (D-45) |
+| sent_by_user_id | uuid | FK users (restrict) |
 | request_id | uuid | `UQ`; client-generated per submit, a repeat never sends twice |
 | to_phone | varchar(16) | Guest phone at send time |
 | body | text | 1–4096 characters (check) |

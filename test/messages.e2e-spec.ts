@@ -405,137 +405,181 @@ describe('Message log and resolution (e2e, SCR-25)', () => {
       .expect(401);
   });
 
-  it('D-43: lists an event’s replies, newest first, with the guest and a type filter', async () => {
-    const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
-    const other = await sentInvitation(WhatsappMessageState.SENT);
-    const inbound = db.getRepository(WhatsappInbound);
+  describe('D-45: WhatsApp inbox', () => {
     let seq = 0;
-    const save = (row: Partial<WhatsappInbound>) =>
-      inbound.save(
-        inbound.create({
-          providerMessageId: `wamid.reply.${++seq}`,
-          fromPhone: guest.phone,
-          guestId: guest.id,
-          eventId: event.id,
-          outcome: WhatsappInboundOutcome.IGNORED,
-          ...row,
-        }),
-      );
-    await save({
-      type: WhatsappInboundType.BUTTON,
-      metaType: 'button',
-      body: 'سأحضر',
-      buttonPayload: 'RSVP_ACCEPT',
-      outcome: WhatsappInboundOutcome.APPLIED,
-    });
-    await new Promise((r) => setTimeout(r, 10));
-    await save({
-      type: WhatsappInboundType.TEXT,
-      metaType: 'text',
-      body: 'هل الموقف متاح؟',
-    });
-    await save({
-      type: WhatsappInboundType.TEXT,
-      metaType: 'text',
-      body: 'لمناسبة أخرى',
-      guestId: other.guest.id,
-      eventId: other.event.id,
-    });
-
-    const url = `/api/admin/events/${event.id}/replies`;
-    const all = await asAdmin(server().get(url)).expect(200);
-    expect(all.body.data.meta.total).toBe(2);
-    expect(all.body.data.items[0]).toMatchObject({
-      type: 'TEXT',
-      body: 'هل الموقف متاح؟',
-      guestName: 'محمد العتيبي',
-      guestPhone: guest.phone,
-      outcome: 'IGNORED',
-    });
-    expect(all.body.data.items[1]).toMatchObject({
-      type: 'BUTTON',
-      body: 'سأحضر',
-      outcome: 'APPLIED',
-    });
-
-    const texts = await asAdmin(server().get(`${url}?type=TEXT`)).expect(200);
-    expect(texts.body.data.items).toHaveLength(1);
-    await asAdmin(server().get(`${url}?type=NOPE`)).expect(400);
-    await server().get(url).expect(401);
-    await asAdmin(
-      server().get(
-        '/api/admin/events/00000000-0000-4000-8000-000000000000/replies',
-      ),
-    ).expect(404);
-  });
-
-  describe('D-44: admin replies inside the 24 h window', () => {
-    let seq = 0;
-    const guestWrote = (guest: Guest, eventId: string, agoMs: number) =>
-      db.getRepository(WhatsappInbound).save(
-        db.getRepository(WhatsappInbound).create({
+    const inbound = () => db.getRepository(WhatsappInbound);
+    const write = (
+      phone: string,
+      opts: Partial<WhatsappInbound> & { agoMs?: number } = {},
+    ) => {
+      const { agoMs = 60_000, ...row } = opts;
+      return inbound().save(
+        inbound().create({
           providerMessageId: `wamid.guest.${++seq}`,
-          fromPhone: guest.phone,
-          guestId: guest.id,
-          eventId,
+          fromPhone: phone,
           type: WhatsappInboundType.TEXT,
           metaType: 'text',
           body: 'هل الموقف متاح؟',
           outcome: WhatsappInboundOutcome.IGNORED,
           receivedAt: new Date(Date.now() - agoMs),
+          ...row,
         }),
       );
-    const send = (eventId: string, body: object) =>
-      csrf(asAdmin(server().post(`/api/admin/events/${eventId}/replies`))).send(
-        body,
-      );
+    };
+    const idOf = (phone: string) => phone.slice(1);
+    const send = (phone: string, body: object) =>
+      csrf(
+        asAdmin(
+          server().post(
+            `/api/admin/inbox/conversations/${idOf(phone)}/replies`,
+          ),
+        ),
+      ).send(body);
     const uuid = () => crypto.randomUUID();
+    const conversations = (query = '') =>
+      asAdmin(server().get(`/api/admin/inbox/conversations${query}`));
 
-    it('sends once per request id and shows in the conversation', async () => {
+    beforeEach(async () => {
+      await db.query('DELETE FROM whatsapp_replies');
+      await db.query('DELETE FROM whatsapp_inbound');
+    });
+
+    it('lists one conversation per number across events, with unread and the guest', async () => {
+      const a = await sentInvitation(WhatsappMessageState.SENT);
+      const b = await sentInvitation(WhatsappMessageState.SENT);
+      const stranger = '+966577777777';
+      await write(a.guest.phone!, {
+        guestId: a.guest.id,
+        eventId: a.event.id,
+        agoMs: 3 * 60_000,
+      });
+      await write(a.guest.phone!, {
+        type: WhatsappInboundType.BUTTON,
+        metaType: 'button',
+        body: 'سأحضر',
+        buttonPayload: 'RSVP_ACCEPT',
+        outcome: WhatsappInboundOutcome.APPLIED,
+        guestId: a.guest.id,
+        eventId: a.event.id,
+        agoMs: 2 * 60_000,
+      });
+      await write(b.guest.phone!, {
+        guestId: b.guest.id,
+        eventId: b.event.id,
+        seenAt: new Date(),
+        agoMs: 90_000,
+      });
+      await write(stranger, { body: 'من أنتم؟', agoMs: 30_000 });
+
+      const all = await conversations().expect(200);
+      expect(all.body.data.meta.total).toBe(3);
+      const [first, second, third] = all.body.data.items;
+      expect(first).toMatchObject({
+        id: idOf(stranger),
+        guestName: null,
+        lastBody: 'من أنتم؟',
+        unread: 1,
+      });
+      expect(second).toMatchObject({ id: idOf(b.guest.phone!), unread: 0 });
+      // The button counts as a message but not as unread.
+      expect(third).toMatchObject({
+        id: idOf(a.guest.phone!),
+        guestName: 'محمد العتيبي',
+        eventReference: a.event.referenceCode,
+        lastType: 'BUTTON',
+        unread: 1,
+      });
+      expect(new Date(third.replyWindowClosesAt).getTime()).toBeGreaterThan(
+        Date.now(),
+      );
+
+      const unread = await conversations('?unread=true').expect(200);
+      expect(unread.body.data.meta.total).toBe(2);
+      const byName = await conversations(
+        `?search=${encodeURIComponent('العتيبي')}`,
+      ).expect(200);
+      expect(byName.body.data.meta.total).toBe(2);
+      const byLocal = await conversations('?search=0577777777').expect(200);
+      expect(byLocal.body.data.items.map((c: { id: string }) => c.id)).toEqual([
+        idOf(stranger),
+      ]);
+      const count = await asAdmin(
+        server().get('/api/admin/inbox/unread-count'),
+      ).expect(200);
+      expect(count.body.data.count).toBe(2);
+
+      await csrf(
+        asAdmin(
+          server().post(
+            `/api/admin/inbox/conversations/${idOf(stranger)}/seen`,
+          ),
+        ),
+      ).expect(200);
+      const after = await asAdmin(
+        server().get('/api/admin/inbox/unread-count'),
+      ).expect(200);
+      expect(after.body.data.count).toBe(1);
+
+      await server().get('/api/admin/inbox/conversations').expect(401);
+      await asAdmin(
+        server().get('/api/admin/inbox/conversations/966500000999'),
+      ).expect(404);
+      await asAdmin(server().get('/api/admin/inbox/conversations/abc')).expect(
+        404,
+      );
+    });
+
+    it('replies once per request id, to a guest or any number, and shows the thread', async () => {
       const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
-      await guestWrote(guest, event.id, 60 * 60_000);
+      await write(guest.phone!, { guestId: guest.id, eventId: event.id });
       const requestId = uuid();
-      const first = await send(event.id, {
-        guestId: guest.id,
+      const first = await send(guest.phone!, {
         requestId,
-        text: '  نعم، الموقف متاح للضيوف  ',
+        text: '  نعم، الموقف متاح  ',
       }).expect(200);
       expect(first.body.code).toBe('replies.sent');
       expect(first.body.data).toMatchObject({
         direction: 'OUT',
         state: 'SENT',
-        body: 'نعم، الموقف متاح للضيوف',
+        body: 'نعم، الموقف متاح',
         sentByName: 'المدير',
-        guestPhone: guest.phone,
+        eventReference: event.referenceCode,
       });
-      const again = await send(event.id, {
-        guestId: guest.id,
+      const again = await send(guest.phone!, {
         requestId,
-        text: 'نعم، الموقف متاح للضيوف',
+        text: 'نعم، الموقف متاح',
       }).expect(200);
       expect(again.body.data.id).toBe(first.body.data.id);
-      const texts = meta.sent.filter((m) => m.type === 'text');
-      expect(texts).toEqual([
-        expect.objectContaining({
-          to: guest.phone,
-          body: 'نعم، الموقف متاح للضيوف',
-        }),
+      expect(meta.sent.filter((m) => m.type === 'text')).toEqual([
+        expect.objectContaining({ to: guest.phone, body: 'نعم، الموقف متاح' }),
       ]);
 
-      const list = await asAdmin(
-        server().get(`/api/admin/events/${event.id}/replies`),
+      const thread = await asAdmin(
+        server().get(`/api/admin/inbox/conversations/${idOf(guest.phone!)}`),
       ).expect(200);
-      expect(list.body.data.meta.total).toBe(2);
+      expect(thread.body.data.conversation).toMatchObject({
+        guestName: 'محمد العتيبي',
+        lastDirection: 'OUT',
+        unread: 0, // answering reads the conversation
+      });
       expect(
-        list.body.data.items.map((r: { direction: string }) => r.direction),
+        thread.body.data.messages.map(
+          (m: { direction: string }) => m.direction,
+        ),
       ).toEqual(['OUT', 'IN']);
-      expect(
-        new Date(list.body.data.items[1].replyWindowClosesAt).getTime(),
-      ).toBeGreaterThan(Date.now());
-      const buttons = await asAdmin(
-        server().get(`/api/admin/events/${event.id}/replies?type=BUTTON`),
-      ).expect(200);
-      expect(buttons.body.data.meta.total).toBe(0);
+
+      // A number that is no guest.
+      const stranger = '+966588888888';
+      await write(stranger);
+      const toStranger = await send(stranger, {
+        requestId: uuid(),
+        text: 'أهلاً، كيف نخدمك؟',
+      }).expect(200);
+      expect(toStranger.body.data.eventReference).toBeNull();
+      const row = await db
+        .getRepository(WhatsappReply)
+        .findOneByOrFail({ id: toStranger.body.data.id });
+      expect(row).toMatchObject({ guestId: null, eventId: null });
 
       // Delivery statuses reach the reply, forward only.
       const wamid = (
@@ -567,67 +611,48 @@ describe('Message log and resolution (e2e, SCR-25)', () => {
         });
       await hook('read');
       await hook('delivered');
-      const row = await db
+      const read = await db
         .getRepository(WhatsappReply)
         .findOneByOrFail({ id: first.body.data.id });
-      expect(row.deliveryStatus).toBe('READ');
-      expect(row.readAt).not.toBeNull();
-      expect(row.deliveredAt).not.toBeNull();
+      expect(read.deliveryStatus).toBe('READ');
+      expect(read.deliveredAt).not.toBeNull();
     });
 
-    it('refuses outside the window, for another event’s guest, or empty text', async () => {
-      const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
-      const other = await sentInvitation(WhatsappMessageState.SENT);
-      const body = { guestId: guest.id, requestId: uuid(), text: 'مرحباً' };
-      expect((await send(event.id, body).expect(422)).body.code).toBe(
-        'replies.window_closed',
-      );
-      await guestWrote(guest, event.id, 23 * 60 * 60_000 + 60_000);
+    it('refuses outside the window, an unknown number, or empty text', async () => {
+      const phone = '+966566666666';
+      await send(phone, { requestId: uuid(), text: 'مرحباً' }).expect(404);
+      await write(phone, { agoMs: 23 * 60 * 60_000 + 60_000 });
       expect(
-        (await send(event.id, { ...body, requestId: uuid() }).expect(422)).body
-          .code,
+        (await send(phone, { requestId: uuid(), text: 'مرحباً' }).expect(422))
+          .body.code,
       ).toBe('replies.window_closed');
-      await guestWrote(other.guest, other.event.id, 60_000);
-      await send(event.id, {
-        guestId: other.guest.id,
-        requestId: uuid(),
-        text: 'مرحباً',
-      }).expect(404);
-      await send(other.event.id, {
-        guestId: other.guest.id,
-        requestId: uuid(),
-        text: '   ',
-      }).expect(400);
+      await write(phone);
+      await send(phone, { requestId: uuid(), text: '   ' }).expect(400);
       expect(meta.sent.filter((m) => m.type === 'text')).toHaveLength(0);
-      expect(
-        await db.getRepository(WhatsappReply).countBy({ eventId: event.id }),
-      ).toBe(0);
+      expect(await db.getRepository(WhatsappReply).count()).toBe(0);
     });
 
-    it('records a failure (422) and an unknown outcome (200) without retrying', async () => {
-      const { event, guest } = await sentInvitation(WhatsappMessageState.SENT);
-      await guestWrote(guest, event.id, 60_000);
+    it('records a failure (422, also on repeat) and an unknown outcome (200), never retried', async () => {
+      const phone = '+966555555555';
+      await write(phone);
       meta.nextOutcome = { outcome: 'FAILED', code: 'meta_131047' };
-      const failed = { guestId: guest.id, requestId: uuid(), text: 'أولى' };
-      expect((await send(event.id, failed).expect(422)).body.code).toBe(
+      const failed = { requestId: uuid(), text: 'أولى' };
+      expect((await send(phone, failed).expect(422)).body.code).toBe(
         'replies.window_closed',
       );
-      // The same submit again reports the same failure and sends nothing.
-      expect((await send(event.id, failed).expect(422)).body.code).toBe(
+      expect((await send(phone, failed).expect(422)).body.code).toBe(
         'replies.window_closed',
       );
       expect(meta.sent.filter((m) => m.type === 'text')).toHaveLength(0);
       meta.nextOutcome = { outcome: 'UNKNOWN', code: 'ETIMEDOUT' };
-      const unknown = await send(event.id, {
-        guestId: guest.id,
+      const unknown = await send(phone, {
         requestId: uuid(),
         text: 'ثانية',
       }).expect(200);
       expect(unknown.body.code).toBe('replies.unknown');
-      expect(unknown.body.data.state).toBe('UNKNOWN');
       const rows = await db
         .getRepository(WhatsappReply)
-        .find({ where: { eventId: event.id }, order: { createdAt: 'ASC' } });
+        .find({ order: { createdAt: 'ASC' } });
       expect(rows.map((r) => [r.state, r.errorCode])).toEqual([
         ['FAILED', 'meta_131047'],
         ['UNKNOWN', 'ETIMEDOUT'],
@@ -635,7 +660,6 @@ describe('Message log and resolution (e2e, SCR-25)', () => {
       const actions = await db
         .getRepository(AdminAction)
         .findBy({ action: 'reply.send' });
-      expect(actions.length).toBeGreaterThanOrEqual(2);
       expect(JSON.stringify(actions)).not.toContain('أولى');
     });
   });

@@ -89,6 +89,10 @@ export class WhatsappInbound {
   })
   outcome!: WhatsappInboundOutcome;
 
+  /** When an admin opened the conversation in the inbox (D-45); null = unread. */
+  @Column({ name: 'seen_at', type: 'timestamptz', nullable: true })
+  seenAt!: Date | null;
+
   @CreateDateColumn({ name: 'received_at', type: 'timestamptz' })
   receivedAt!: Date;
 }

@@ -12,7 +12,7 @@ import {
 } from './whatsapp-message.entity';
 
 /**
- * D-44: a free-form text an admin sent to a guest inside the 24 h customer-service window.
+ * D-44/D-45: a free-form text an admin sent from the inbox inside the 24 h customer-service window.
  * Sent once, never retried by the system; `UNKNOWN` is shown as unconfirmed.
  */
 @Entity({ name: 'whatsapp_replies' })
@@ -21,11 +21,12 @@ export class WhatsappReply {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'event_id', type: 'uuid' })
-  eventId!: string;
+  /** The guest's event when the number belongs to a guest; null for any other number (D-45). */
+  @Column({ name: 'event_id', type: 'uuid', nullable: true })
+  eventId!: string | null;
 
-  @Column({ name: 'guest_id', type: 'uuid' })
-  guestId!: string;
+  @Column({ name: 'guest_id', type: 'uuid', nullable: true })
+  guestId!: string | null;
 
   @Column({ name: 'sent_by_user_id', type: 'uuid' })
   sentByUserId!: string;

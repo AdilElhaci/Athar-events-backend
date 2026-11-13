@@ -23,10 +23,7 @@ import {
   MessageView,
   ResolveMessageDto,
 } from './dto/message.dto';
-import { RepliesQueryDto, ReplyView, SendReplyDto } from './dto/reply.dto';
-import { WhatsappMessageState } from './entities/whatsapp-message.entity';
 import { MessagesService } from './messages.service';
-import { RepliesService } from './replies.service';
 
 /** SCR-25: an event's WhatsApp messages; admins resolve `UNKNOWN` and `FAILED` (AC-06-4). */
 @ApiTags('Admin — Messages')
@@ -35,42 +32,7 @@ import { RepliesService } from './replies.service';
 @UseGuards(JwtAuthGuard, UserTypeGuard)
 @RequireUserType(UserType.PLATFORM_ADMIN)
 export class AdminMessagesController {
-  constructor(
-    private readonly messages: MessagesService,
-    private readonly replies: RepliesService,
-  ) {}
-
-  @Get('events/:id/replies')
-  @ApiOperation({
-    summary: 'Guest replies inbox (D-43): buttons and text, newest first.',
-  })
-  listReplies(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query() query: RepliesQueryDto,
-  ): Promise<Paginated<ReplyView>> {
-    return this.replies.list(id, query);
-  }
-
-  @Post('events/:id/replies')
-  @HttpCode(200)
-  @UseGuards(CsrfGuard)
-  @ApiOperation({
-    summary:
-      'Free-form text to a guest inside the 24 h window (D-44); sent once per requestId.',
-  })
-  async sendReply(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SendReplyDto,
-  ) {
-    const reply = await this.replies.send(user.id, id, dto);
-    return withMessage(
-      reply,
-      reply.state === WhatsappMessageState.UNKNOWN
-        ? 'replies.unknown'
-        : 'replies.sent',
-    );
-  }
+  constructor(private readonly messages: MessagesService) {}
 
   @Get('events/:id/messages')
   @ApiOperation({ summary: 'Newest first; filters by state, delivery, kind.' })

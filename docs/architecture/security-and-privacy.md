@@ -51,8 +51,8 @@ Enforcement is on the backend only: `JwtAuthGuard` → `UserTypeGuard` → owner
 | Guest name, phone | `guests` | Admins (full), owner (masked phone), door (name only, after a valid scan) | Anonymised 90 days after the event |
 | RSVP, admission time | `guests` | Owner, admins | Kept as aggregate after anonymisation |
 | Message ids and statuses | `whatsapp_messages` | Admins | Errors cleared after 90 days |
-| Inbound replies (buttons and text, D-43) | `whatsapp_inbound` | Admins (replies tab) | Deleted after 90 days; text never logged; media not downloaded |
-| Admin replies to guests (D-44) | `whatsapp_replies` | Admins (replies tab) | Deleted after 90 days; text never logged or audited |
+| Inbound replies (buttons and text, D-43) | `whatsapp_inbound` | Admins (inbox, D-45) | Deleted after 90 days; text never logged; media not downloaded |
+| Admin replies (D-44) | `whatsapp_replies` | Admins (inbox, D-45) | Deleted after 90 days; text never logged or audited |
 | Imported spreadsheets | Memory only; parsed rows in `guest_import_rows` | Admins | Rows deleted 7 days after apply |
 | OTP challenges | `otp_challenges` | System only | Deleted after 30 days |
 | Payment references, card brand/last4 | `payment_attempts` | Owner (own), admins | As required for accounting (client decision) |

@@ -37,7 +37,7 @@ Admin creates a content version (template + variables); the backend renders an A
 ### Status and RSVP webhooks
 
 - Statuses update `delivery_status` monotonically (`NONE < SENT < DELIVERED < READ`; `FAILED` only from `NONE`/`SENT`).
-- A button reply is matched by `context.id` → invitation intent → guest, and the sender phone must equal the guest phone. Outcomes recorded in `whatsapp_inbound`. Every inbound message (text, button label, media type) is kept with its guest and event for the admin replies inbox «الردود» ([D-43](../product/decisions.md#d-43)); text never changes an RSVP. Admins answer a guest with free text while the guest's last message is under 23 h old ([D-44](../product/decisions.md#d-44)); one send per `requestId`, never retried.
+- A button reply is matched by `context.id` → invitation intent → guest, and the sender phone must equal the guest phone. Outcomes recorded in `whatsapp_inbound`. Every inbound message (text, button label, media type) is kept with its guest and event ([D-43](../product/decisions.md#d-43)); text never changes an RSVP. Admins read and answer every number in one inbox «صندوق الوارد», a conversation per phone ([D-45](../product/decisions.md#d-45)), with free text while the number's last message is under 23 h old ([D-44](../product/decisions.md#d-44)); one send per `requestId`, never retried.
 - `RSVP_ACCEPT`: set `ACCEPTED` (unless `rsvp_locked`), issue QR credential ([SP-05](SP-05-qr-and-check-in.md)), create a `QR` intent (in-window image) or `QR_TEMPLATE` intent if the window is closed.
 - `RSVP_DECLINE`: set `DECLINED`; an accepted guest who declines has the QR revoked.
 - Replies after `starts_at` are recorded `AFTER_EVENT` and change nothing ([OQ-22](../product/open-questions.md)).
