@@ -1,3 +1,4 @@
+import { amountDue } from '../../coupons/coupon-pricing';
 import { applyDecorators } from '@nestjs/common';
 import { Transform } from 'class-transformer';
 import {
@@ -115,6 +116,12 @@ export interface EventView {
     priceHalalas: number;
     currency: string;
   };
+  /** D-48: the coupon on the event, if any. */
+  coupon: { code: string; discountHalalas: number } | null;
+  /** What Moyasar charges: the package price minus the discount. */
+  amountDueHalalas: number;
+  /** The owner can add, change or remove the coupon (unpaid, no open invoice). */
+  couponEditable: boolean;
   status: EventStatus;
   paymentStatus: EventPaymentStatus;
   listStatus: EventListStatus;
@@ -157,6 +164,13 @@ export const toEventView = (event: Event): EventView => ({
     priceHalalas: event.priceHalalas,
     currency: event.currency,
   },
+  coupon: event.couponCode
+    ? { code: event.couponCode, discountHalalas: event.discountHalalas }
+    : null,
+  amountDueHalalas: amountDue(event),
+  couponEditable:
+    event.paymentStatus === EventPaymentStatus.UNPAID &&
+    (event.status === EventStatus.DRAFT || event.status === EventStatus.ACTIVE),
   status: event.status,
   paymentStatus: event.paymentStatus,
   listStatus: event.listStatus,

@@ -10,6 +10,7 @@ import { EmailChallenge } from '../modules/auth/entities/email-challenge.entity'
 import { RefreshToken } from '../modules/auth/entities/refresh-token.entity';
 import { Session } from '../modules/auth/entities/session.entity';
 import { ContactMessage } from '../modules/contact/entities/contact-message.entity';
+import { Coupon } from '../modules/coupons/entities/coupon.entity';
 import { Event } from '../modules/events/entities/event.entity';
 import {
   GuestImport,
@@ -33,6 +34,7 @@ export const ENTITIES = [
   RefreshToken,
   AdminAction,
   Package,
+  Coupon,
   Event,
   Article,
   ArticleImage,

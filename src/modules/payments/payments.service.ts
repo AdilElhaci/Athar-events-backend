@@ -19,6 +19,8 @@ import {
   PaymentAttempt,
   PaymentAttemptStatus,
 } from './entities/payment-attempt.entity';
+import { amountDue, couponUsable } from '../coupons/coupon-pricing';
+import { Coupon } from '../coupons/entities/coupon.entity';
 import { MoyasarClient, MoyasarInvoice } from './moyasar.client';
 import { PaymentApplyService } from './payment-apply.service';
 
@@ -60,7 +62,7 @@ export class PaymentsService {
   }
 
   /**
-   * Opens (or reuses) a hosted invoice for the snapshot price (AC-05-1). The event row stays
+   * Opens (or reuses) a hosted invoice for the snapshot price less any coupon (AC-05-1, D-48). The event row stays
    * locked while Moyasar answers, so two clicks never open two invoices.
    */
   checkout(ownerId: string, eventId: string): Promise<CheckoutView> {
@@ -80,17 +82,26 @@ export class PaymentsService {
         throw conflict('events.closed');
       if (event.startsAt.getTime() <= Date.now())
         throw unprocessable('events.starts_in_past');
+      const amount = amountDue(event);
 
       const open = await manager.findOne(PaymentAttempt, {
         where: {
           eventId,
           status: PaymentAttemptStatus.PENDING,
+          amount,
           expiresAt: MoreThan(new Date(Date.now() + REUSE_MARGIN_MS)),
         },
         order: { createdAt: 'DESC' },
       });
       if (open?.paymentUrl)
         return { paymentUrl: open.paymentUrl, paymentAttemptId: open.id };
+
+      // D-48: the coupon is checked again; it may have been stopped since the owner applied it.
+      if (event.couponId) {
+        const coupon = await manager.findOneBy(Coupon, { id: event.couponId });
+        if (!coupon || !couponUsable(coupon))
+          throw unprocessable('coupons.no_longer_valid');
+      }
 
       if (!this.moyasar.isConfigured())
         throw serviceUnavailable('payments.unavailable');
@@ -101,9 +112,9 @@ export class PaymentsService {
       let invoice: MoyasarInvoice;
       try {
         invoice = await this.moyasar.createInvoice({
-          amount: event.priceHalalas,
+          amount,
           currency: event.currency,
-          description: `${event.referenceCode} · باقة ${event.packageName}`,
+          description: `${event.referenceCode} · باقة ${event.packageName}${event.couponCode ? ` · كوبون ${event.couponCode}` : ''}`,
           successUrl: `${eventUrl}/payment?attemptId=${id}`,
           backUrl: eventUrl,
           // Moyasar must reach the callback; a local http origin cannot be reached.
@@ -132,7 +143,7 @@ export class PaymentsService {
         id,
         eventId: event.id,
         ownerId,
-        amount: event.priceHalalas,
+        amount,
         currency: event.currency,
         status: PaymentAttemptStatus.PENDING,
         moyasarInvoiceId: invoice.id,

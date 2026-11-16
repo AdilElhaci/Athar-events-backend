@@ -14,6 +14,7 @@ import { ArticlesModule } from './modules/articles/articles.module';
 import { TestimonialsModule } from './modules/testimonials/testimonials.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ContactModule } from './modules/contact/contact.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
 import { CheckinModule } from './modules/checkin/checkin.module';
 import { REDIS } from './modules/auth/services/rate-limit.service';
 import { EventsModule } from './modules/events/events.module';
@@ -50,6 +51,7 @@ import { ResponseInterceptor } from './shared/interceptors/response.interceptor'
     UsersModule,
     ContactModule,
     PackagesModule,
+    CouponsModule,
     EventsModule,
     GuestsModule,
     InvitationsModule,

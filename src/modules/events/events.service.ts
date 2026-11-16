@@ -1,3 +1,5 @@
+import { discountFor } from '../coupons/coupon-pricing';
+import { Coupon } from '../coupons/entities/coupon.entity';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, ILike, Repository } from 'typeorm';
@@ -137,6 +139,7 @@ export class EventsService {
           event,
           snapshotOf(await this.activePackage(manager, dto.packageId)),
         );
+        await this.repriceCoupon(manager, event);
       }
 
       Object.assign(event, {
@@ -150,6 +153,22 @@ export class EventsService {
       });
       return manager.save(event);
     });
+  }
+
+  /** D-48: a new package price changes the discount; a coupon that no longer applies is dropped. */
+  private async repriceCoupon(manager: EntityManager, event: Event) {
+    if (!event.couponId) return;
+    const coupon = await manager.findOneByOrFail(Coupon, {
+      id: event.couponId,
+    });
+    const discount = discountFor(coupon, event.priceHalalas);
+    if (discount > 0) {
+      event.discountHalalas = discount;
+      return;
+    }
+    event.couponId = null;
+    event.couponCode = null;
+    event.discountHalalas = 0;
   }
 
   private async activePackage(manager: EntityManager, id: string) {

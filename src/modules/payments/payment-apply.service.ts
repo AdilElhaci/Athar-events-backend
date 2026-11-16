@@ -100,6 +100,12 @@ export class PaymentApplyService {
           event.status = EventStatus.ACTIVE;
           event.paidAt = now;
           await manager.save(event);
+          // D-48: a coupon counts once its event is paid; a refund does not give it back.
+          if (event.couponId)
+            await manager.query(
+              `UPDATE coupons SET used_count = used_count + 1 WHERE id = $1`,
+              [event.couponId],
+            );
           this.logger.log(`Event ${event.id} paid (attempt ${attempt.id})`);
           return attempt;
         }

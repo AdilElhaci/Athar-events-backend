@@ -51,7 +51,7 @@ Owner endpoints check `owner_id`; webhook secret timing-safe with 401 on failure
 
 ## 8. Scope and dependencies
 
-In: one purchase per event. Out: upgrades between packages, coupons, invoices/ZATCA, automatic refunds, saved cards. Depends on Moyasar account ([OQ-07](../product/open-questions.md)), SP-01.
+In: one purchase per event; one coupon per event ([D-48](../product/decisions.md#d-48)). Out: upgrades between packages, invoices/ZATCA, automatic refunds, saved cards. Depends on Moyasar account ([OQ-07](../product/open-questions.md)), SP-01.
 
 ## 9. Open questions
 

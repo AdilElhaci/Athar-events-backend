@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Coupon } from '../../coupons/entities/coupon.entity';
 import { Package } from '../../packages/entities/package.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -62,6 +63,14 @@ export enum EventCampaignStatus {
   '"requested_send_at" IS NULL OR "requested_send_at" < "starts_at"',
 )
 @Check('CHK_events_send_at', '"send_at" IS NULL OR "send_at" < "starts_at"')
+@Check(
+  'CHK_events_discount',
+  `("coupon_id" IS NULL AND "coupon_code" IS NULL AND "discount_halalas" = 0) OR ("coupon_id" IS NOT NULL AND "coupon_code" IS NOT NULL AND "discount_halalas" > 0 AND "price_halalas" - "discount_halalas" >= 100)`,
+)
+@Index('UQ_events_owner_coupon', ['ownerId', 'couponId'], {
+  unique: true,
+  where: '"coupon_id" IS NOT NULL',
+})
 export class Event {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -130,6 +139,24 @@ export class Event {
 
   @Column({ name: 'price_halalas', type: 'int' })
   priceHalalas!: number;
+
+  /** D-48: the coupon on this event; changes only while the event is `UNPAID`. */
+  @Column({ name: 'coupon_id', type: 'uuid', nullable: true })
+  couponId!: string | null;
+
+  @ManyToOne(() => Coupon, { onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'coupon_id',
+    foreignKeyConstraintName: 'FK_events_coupon',
+  })
+  coupon?: Coupon | null;
+
+  @Column({ name: 'coupon_code', type: 'varchar', length: 30, nullable: true })
+  couponCode!: string | null;
+
+  /** Off `price_halalas`; Moyasar charges the difference. */
+  @Column({ name: 'discount_halalas', type: 'int', default: 0 })
+  discountHalalas!: number;
 
   @Column({ type: 'varchar', length: 3 })
   currency!: string;
