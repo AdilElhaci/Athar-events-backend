@@ -11,8 +11,15 @@ import {
   WhatsappMessageState,
 } from './whatsapp-message.entity';
 
+export enum WhatsappReplySource {
+  ADMIN = 'ADMIN',
+  /** The auto-reply menu (D-49). */
+  BOT = 'BOT',
+}
+
 /**
- * D-44/D-45: a free-form text an admin sent from the inbox inside the 24 h customer-service window.
+ * D-44/D-45: a free-form text an admin sent from the inbox inside the 24 h customer-service window,
+ * or an answer of the auto-reply menu (D-49).
  * Sent once, never retried by the system; `UNKNOWN` is shown as unconfirmed.
  */
 @Entity({ name: 'whatsapp_replies' })
@@ -28,8 +35,17 @@ export class WhatsappReply {
   @Column({ name: 'guest_id', type: 'uuid', nullable: true })
   guestId!: string | null;
 
-  @Column({ name: 'sent_by_user_id', type: 'uuid' })
-  sentByUserId!: string;
+  /** The admin who wrote it; null for a bot answer (D-49). */
+  @Column({ name: 'sent_by_user_id', type: 'uuid', nullable: true })
+  sentByUserId!: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: WhatsappReplySource,
+    enumName: 'whatsapp_reply_source',
+    default: WhatsappReplySource.ADMIN,
+  })
+  source!: WhatsappReplySource;
 
   /** Chosen by the client per submit; a repeated submit returns the first row. */
   @Index('UQ_whatsapp_replies_request_id', { unique: true })

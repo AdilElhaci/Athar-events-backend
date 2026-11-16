@@ -187,6 +187,11 @@ export class WhatsappDemoService {
     return this.status(sessionId);
   }
 
+  /** A demo session is open for the number (the auto-reply menu then stays silent, D-49). */
+  async hasSession(phone: string): Promise<boolean> {
+    return (await this.redis.exists(this.phoneKey(phone))) === 1;
+  }
+
   /** Called by the webhook after the message was recorded; never throws. */
   async onInbound(inbound: DemoInbound): Promise<void> {
     try {

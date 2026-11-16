@@ -29,6 +29,7 @@ import { WhatsappWebhookController } from './whatsapp/whatsapp-webhook.controlle
 import { WhatsappTemplatesService } from './whatsapp/whatsapp-templates.service';
 import { WhatsappWebhookService } from './whatsapp/whatsapp-webhook.service';
 import { WhatsappDemoController } from './whatsapp/whatsapp-demo.controller';
+import { WhatsappBotService } from './whatsapp/whatsapp-bot.service';
 import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
 
 @Module({
@@ -69,6 +70,7 @@ import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
     InboxService,
     ReplacementsService,
     WhatsappDemoService,
+    WhatsappBotService,
   ],
 })
 export class InvitationsModule {}

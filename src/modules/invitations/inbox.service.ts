@@ -36,12 +36,13 @@ const MESSAGES_SQL = `
   SELECT i.id, i.from_phone AS phone, 'IN' AS direction, i.type::text AS type, i.meta_type,
          i.body, i.button_payload, i.outcome::text AS outcome, NULL AS state,
          NULL AS delivery_status, NULL AS error_code, NULL AS sent_by_user_id, i.event_id,
-         i.received_at AS at
+         NULL AS source, i.received_at AS at
     FROM whatsapp_inbound i
    WHERE i.from_phone IS NOT NULL
   UNION ALL
   SELECT r.id, r.to_phone, 'OUT', 'TEXT', 'text', r.body, NULL, NULL, r.state::text,
-         r.delivery_status::text, r.error_code, r.sent_by_user_id, r.event_id, r.created_at
+         r.delivery_status::text, r.error_code, r.sent_by_user_id, r.event_id, r.source::text,
+         r.created_at
     FROM whatsapp_replies r`;
 
 /** Guest messages that need a human: everything but RSVP buttons. */
@@ -70,6 +71,7 @@ interface MessageRow {
   delivery_status: InboxMessageView['deliveryStatus'];
   error_code: string | null;
   sent_by_name: string | null;
+  source: InboxMessageView['source'];
   event_reference: string | null;
   at: Date;
 }
@@ -147,7 +149,7 @@ export class InboxService {
     );
     const rows = await this.dataSource.query<MessageRow[]>(
       `SELECT m.id, m.direction, m.type, m.meta_type, m.body, m.button_payload, m.outcome,
-              m.state, m.delivery_status, m.error_code, u.name AS sent_by_name,
+              m.state, m.delivery_status, m.error_code, u.name AS sent_by_name, m.source,
               e.reference_code AS event_reference, m.at
          FROM (${MESSAGES_SQL}) m
          LEFT JOIN users u ON u.id = m.sent_by_user_id
@@ -171,6 +173,7 @@ export class InboxService {
         deliveryStatus: r.delivery_status,
         errorCode: r.error_code,
         sentByName: r.sent_by_name,
+        source: r.source,
         eventReference: r.event_reference,
         at: new Date(r.at).toISOString(),
       })),
@@ -284,7 +287,8 @@ export class InboxService {
   private async message(replyId: string): Promise<InboxMessageView> {
     const [row] = await this.dataSource.query<MessageRow[]>(
       `SELECT r.id, r.body, r.state::text AS state, r.delivery_status::text AS delivery_status,
-              r.error_code, u.name AS sent_by_name, e.reference_code AS event_reference,
+              r.error_code, u.name AS sent_by_name, r.source::text AS source,
+              e.reference_code AS event_reference,
               r.created_at AS at
          FROM whatsapp_replies r
          LEFT JOIN users u ON u.id = r.sent_by_user_id
@@ -304,6 +308,7 @@ export class InboxService {
       deliveryStatus: row.delivery_status,
       errorCode: row.error_code,
       sentByName: row.sent_by_name,
+      source: row.source,
       eventReference: row.event_reference,
       at: new Date(row.at).toISOString(),
     };
