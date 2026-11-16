@@ -35,6 +35,15 @@ export interface ButtonsMessage {
 export type UploadOutcome =
   { ok: true; mediaId: string } | { ok: false; retry: boolean; code: string };
 
+/**
+ * D-47 inbound media. `too_large`: Meta reports (or sends) more than the cap, nothing is kept.
+ * `retry`: worth another attempt later (network, 5xx, rate limit).
+ */
+export type DownloadOutcome =
+  | { ok: true; data: Buffer; mimeType: string }
+  | { ok: false; tooLarge: true; size: number | null; mimeType: string | null }
+  | { ok: false; tooLarge: false; retry: boolean; code: string };
+
 /** One message template as Meta reports it (read-only; templates are managed in WhatsApp Manager). */
 export interface MessageTemplate {
   id: string;
@@ -49,6 +58,14 @@ export interface MessageTemplate {
   body: string | null;
   /** Button labels in order. */
   buttons: string[];
+  /** `TEXT`, `IMAGE`, `VIDEO`, `DOCUMENT`, `LOCATION`, or null when there is no header. */
+  headerFormat?: string | null;
+  headerText?: string | null;
+  footer?: string | null;
+  /** Button types in order (`QUICK_REPLY`, `URL`, `PHONE_NUMBER`, `COPY_CODE`, …). */
+  buttonTypes?: string[];
+  /** True when a URL button has a {{n}} suffix that must be filled at send time. */
+  dynamicUrlButton?: boolean;
 }
 
 export type TemplatesOutcome =
@@ -106,6 +123,24 @@ export abstract class WhatsappClient {
     message: ButtonsMessage,
   ): Promise<SendOutcome>;
   abstract uploadPng(png: Buffer): Promise<UploadOutcome>;
+  /** Uploads any file Meta accepts for sending (D-47: JPEG, PNG, PDF). */
+  abstract uploadMedia(
+    data: Buffer,
+    mimeType: string,
+    fileName: string,
+  ): Promise<UploadOutcome>;
+  /** Looks the media id up and downloads it, refusing anything above `maxBytes`. */
+  abstract downloadMedia(
+    mediaId: string,
+    maxBytes: number,
+  ): Promise<DownloadOutcome>;
+  /** A file (PDF) with its name; accepted only inside the 24 h window. */
+  abstract sendDocument(
+    to: string,
+    mediaId: string,
+    fileName: string,
+    caption?: string,
+  ): Promise<SendOutcome>;
   abstract sendImage(
     to: string,
     mediaId: string,
@@ -114,6 +149,10 @@ export abstract class WhatsappClient {
 }
 
 const TIMEOUT_MS = 15_000;
+/** Downloads can be up to 16 MB. */
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+/** Meta serves media from `lookaside.fbsbx.com` (and other `fbsbx.com` / `whatsapp.net` hosts). */
+const META_MEDIA_HOST = /(^|\.)(fbsbx\.com|whatsapp\.net|fbcdn\.net)$/i;
 /** Meta throughput and spam limits: the message was not accepted, try later. */
 const RATE_LIMIT_CODES = new Set([4, 80007, 130429, 131048, 131056]);
 /** Connection never established: nothing reached Meta. */
@@ -138,8 +177,9 @@ interface RawTemplate {
   rejected_reason?: unknown;
   components?: Array<{
     type?: unknown;
+    format?: unknown;
     text?: unknown;
-    buttons?: Array<{ text?: unknown }>;
+    buttons?: Array<{ type?: unknown; text?: unknown; url?: unknown }>;
   }>;
 }
 
@@ -194,7 +234,10 @@ export const toTemplateComponents = (t: NewTemplate): unknown[] => [
 export const toMessageTemplate = (raw: RawTemplate): MessageTemplate => {
   const components = Array.isArray(raw.components) ? raw.components : [];
   const body = components.find((c) => c.type === 'BODY');
+  const header = components.find((c) => c.type === 'HEADER');
+  const footer = components.find((c) => c.type === 'FOOTER');
   const buttons = components.find((c) => c.type === 'BUTTONS');
+  const buttonList = Array.isArray(buttons?.buttons) ? buttons.buttons : [];
   const reason = str(raw.rejected_reason);
   return {
     id: str(raw.id),
@@ -205,9 +248,14 @@ export const toMessageTemplate = (raw: RawTemplate): MessageTemplate => {
     // Meta sends "NONE" when there is no rejection.
     rejectedReason: reason && reason !== 'NONE' ? reason : null,
     body: typeof body?.text === 'string' ? body.text : null,
-    buttons: (Array.isArray(buttons?.buttons) ? buttons.buttons : [])
-      .map((b) => str(b.text))
-      .filter(Boolean),
+    buttons: buttonList.map((b) => str(b.text)).filter(Boolean),
+    headerFormat: header ? str(header.format) || 'TEXT' : null,
+    headerText: typeof header?.text === 'string' ? header.text : null,
+    footer: typeof footer?.text === 'string' ? footer.text : null,
+    buttonTypes: buttonList.map((b) => str(b.type)),
+    dynamicUrlButton: buttonList.some(
+      (b) => b.type === 'URL' && /\{\{\s*\d+\s*\}\}/.test(str(b.url)),
+    ),
   };
 };
 
@@ -351,13 +399,18 @@ export class HttpWhatsappClient extends WhatsappClient {
         name: template.name,
         language: { code: template.language },
         components: [
-          {
-            type: 'body',
-            parameters: template.bodyParameters.map((text) => ({
-              type: 'text',
-              text,
-            })),
-          },
+          // Meta rejects an empty parameter list: a template without variables sends none.
+          ...(template.bodyParameters.length > 0
+            ? [
+                {
+                  type: 'body',
+                  parameters: template.bodyParameters.map((text) => ({
+                    type: 'text',
+                    text,
+                  })),
+                },
+              ]
+            : []),
           ...template.quickReplyPayloads.map((payload, index) => ({
             type: 'button',
             sub_type: 'quick_reply',
@@ -410,16 +463,125 @@ export class HttpWhatsappClient extends WhatsappClient {
     });
   }
 
-  async uploadPng(png: Buffer): Promise<UploadOutcome> {
+  sendDocument(
+    to: string,
+    mediaId: string,
+    fileName: string,
+    caption?: string,
+  ): Promise<SendOutcome> {
+    return this.sendMessage({
+      to: to.replace(/^\+/, ''),
+      type: 'document',
+      document: {
+        id: mediaId,
+        filename: fileName,
+        ...(caption ? { caption } : {}),
+      },
+    });
+  }
+
+  uploadPng(png: Buffer): Promise<UploadOutcome> {
+    return this.uploadMedia(png, 'image/png', 'qr.png');
+  }
+
+  async downloadMedia(
+    mediaId: string,
+    maxBytes: number,
+  ): Promise<DownloadOutcome> {
+    const fail = (retry: boolean, code: string): DownloadOutcome => ({
+      ok: false,
+      tooLarge: false,
+      retry,
+      code,
+    });
+    if (!this.isConfigured()) return fail(false, 'not_configured');
+    const auth = { Authorization: `Bearer ${this.token}` };
+
+    // 1. Media id → a short-lived download URL (about five minutes).
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/${encodeURIComponent(mediaId)}`, {
+        headers: auth,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch (error) {
+      return fail(true, networkCode(error) ?? 'network');
+    }
+    const info = (await response.json().catch(() => null)) as {
+      url?: unknown;
+      mime_type?: unknown;
+      file_size?: unknown;
+    } | null;
+    if (!response.ok || typeof info?.url !== 'string')
+      return fail(
+        response.status >= 500 || response.status === 429,
+        `meta_${errorCode(info) ?? response.status}`,
+      );
+    const mimeType = str(info.mime_type) || 'application/octet-stream';
+    const size = typeof info.file_size === 'number' ? info.file_size : null;
+    if (size !== null && size > maxBytes)
+      return { ok: false, tooLarge: true, size, mimeType };
+    // The token goes only to Meta's own media host, never to a URL from elsewhere.
+    let url: URL;
+    try {
+      url = new URL(info.url);
+    } catch {
+      return fail(false, 'media_url_invalid');
+    }
+    if (url.protocol !== 'https:' || !META_MEDIA_HOST.test(url.hostname))
+      return fail(false, 'media_url_host');
+
+    // 2. The bytes, with the same token, stopping at the cap.
+    let file: Response;
+    try {
+      file = await fetch(url, {
+        headers: auth,
+        redirect: 'error',
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      });
+    } catch (error) {
+      return fail(true, networkCode(error) ?? 'network');
+    }
+    if (!file.ok || !file.body)
+      return fail(
+        file.status >= 500 || file.status === 429 || file.status === 404,
+        `media_http_${file.status}`,
+      );
+    const declared = Number(file.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      await file.body.cancel().catch(() => undefined);
+      return { ok: false, tooLarge: true, size: declared, mimeType };
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for await (const chunk of file.body) {
+        total += chunk.byteLength;
+        if (total > maxBytes) {
+          return { ok: false, tooLarge: true, size: size ?? total, mimeType };
+        }
+        chunks.push(chunk);
+      }
+    } catch (error) {
+      return fail(true, networkCode(error) ?? 'network');
+    }
+    return { ok: true, data: Buffer.concat(chunks), mimeType };
+  }
+
+  async uploadMedia(
+    data: Buffer,
+    mimeType: string,
+    fileName: string,
+  ): Promise<UploadOutcome> {
     if (!this.isConfigured())
       return { ok: false, retry: false, code: 'not_configured' };
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
-    form.append('type', 'image/png');
+    form.append('type', mimeType);
     form.append(
       'file',
-      new Blob([new Uint8Array(png)], { type: 'image/png' }),
-      'qr.png',
+      new Blob([new Uint8Array(data)], { type: mimeType }),
+      fileName,
     );
     let response: Response;
     try {
@@ -427,7 +589,10 @@ export class HttpWhatsappClient extends WhatsappClient {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.token}` },
         body: form,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        // A PDF can be several megabytes; the QR is tiny either way.
+        signal: AbortSignal.timeout(
+          data.length > 1_000_000 ? DOWNLOAD_TIMEOUT_MS : TIMEOUT_MS,
+        ),
       });
     } catch (error) {
       // An upload creates nothing the guest sees, so any network failure is safe to retry.

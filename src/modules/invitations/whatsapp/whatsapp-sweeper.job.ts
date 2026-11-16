@@ -1,12 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS } from '../../auth/services/rate-limit.service';
+import { InboxMediaService } from '../inbox-media.service';
 import { CampaignSenderService } from './campaign-sender.service';
 import { WhatsappSenderService } from './whatsapp-sender.service';
 
 const LOCK_KEY = 'lock:whatsapp:sweep';
 const LOCK_TTL_MS = 2 * 60_000;
 export const CHUNK = 50;
+const MEDIA_PER_PASS = 5;
 /** One pass stops taking new chunks after this, well inside the lock TTL. */
 const PASS_BUDGET_MS = 20_000;
 
@@ -15,6 +17,8 @@ export interface SweepResult {
   started: number;
   sent: number;
   completed: number;
+  /** Inbound media downloads retried. */
+  media: number;
   /** The pass stopped on its time budget with a full chunk: more is probably queued. */
   more: boolean;
 }
@@ -32,6 +36,7 @@ export class WhatsappSweeperJob {
   constructor(
     private readonly sender: WhatsappSenderService,
     private readonly campaigns: CampaignSenderService,
+    private readonly media: InboxMediaService,
     @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
@@ -68,6 +73,8 @@ export class WhatsappSweeperJob {
       }
     }
     const completed = await this.campaigns.completeFinished();
-    return { stale, started, sent, completed, more };
+    // D-47: inbound media whose download after the webhook failed; a few per pass.
+    const media = await this.media.retryPending(MEDIA_PER_PASS);
+    return { stale, started, sent, completed, media, more };
   }
 }

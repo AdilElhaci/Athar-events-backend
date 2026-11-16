@@ -18,6 +18,7 @@ import {
 import { Guest } from '../modules/guests/entities/guest.entity';
 import { InvitationContent } from '../modules/invitations/entities/invitation-content.entity';
 import { WhatsappInbound } from '../modules/invitations/entities/whatsapp-inbound.entity';
+import { WhatsappMedia } from '../modules/invitations/entities/whatsapp-media.entity';
 import { WhatsappReply } from '../modules/invitations/entities/whatsapp-reply.entity';
 import { WhatsappMessage } from '../modules/invitations/entities/whatsapp-message.entity';
 import { Package } from '../modules/packages/entities/package.entity';
@@ -47,6 +48,7 @@ export const ENTITIES = [
   WhatsappMessage,
   WhatsappInbound,
   WhatsappReply,
+  WhatsappMedia,
 ];
 
 /** Shared by the Nest app, the migration CLI and the admin CLI. `synchronize` is always off. */

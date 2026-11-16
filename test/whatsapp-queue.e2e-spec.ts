@@ -87,6 +87,7 @@ describe('WhatsApp queue triggers (e2e, T-P3-05)', () => {
       started: 0,
       sent: 50,
       completed: 0,
+      media: 0,
       more: true,
     });
     await service.process();

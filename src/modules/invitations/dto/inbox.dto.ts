@@ -1,17 +1,22 @@
 import { Transform } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 import { PaginationMeta, PaginationQueryDto } from '../../../shared/pagination';
 import {
+  InboundDetails,
   WhatsappInboundOutcome,
   WhatsappInboundType,
 } from '../entities/whatsapp-inbound.entity';
+import { WhatsappMediaState } from '../entities/whatsapp-media.entity';
 import {
   WhatsappDeliveryStatus,
   WhatsappMessageState,
@@ -55,6 +60,66 @@ export class SendReplyDto {
   text!: string;
 }
 
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+
+/** D-47: multipart fields sent with the file (image or PDF). */
+export class SendAttachmentDto {
+  @IsUUID()
+  requestId!: string;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(1024)
+  caption?: string;
+}
+
+/** D-47: an approved template to a number, inside or outside the window. */
+export class SendTemplateDto {
+  @IsUUID()
+  requestId!: string;
+
+  @IsString()
+  @Matches(/^[a-z0-9_]{1,512}$/)
+  name!: string;
+
+  @IsString()
+  @Matches(/^[a-zA-Z]{2,3}(_[a-zA-Z]{2,4})?$/)
+  language!: string;
+
+  /** Body variables {{1}}…{{n}} in order. */
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(1024, { each: true })
+  parameters!: string[];
+}
+
+/** D-47: a template the inbox can send as is (no media header, no dynamic URL). */
+export interface InboxTemplateView {
+  name: string;
+  language: string;
+  /** `UTILITY` (cheaper, event matters) or `MARKETING`. */
+  category: string;
+  headerText: string | null;
+  body: string;
+  footer: string | null;
+  buttons: string[];
+  /** How many body variables must be filled. */
+  variables: number;
+}
+
+/** D-47: the stored copy of a message's file. */
+export interface InboxMediaView {
+  id: string;
+  state: WhatsappMediaState;
+  mimeType: string;
+  fileName: string | null;
+  sizeBytes: number | null;
+}
+
 /** Who a number belongs to: the guest it was most recently invited as, if any. */
 export interface ConversationContact {
   guestId: string | null;
@@ -96,6 +161,13 @@ export interface InboxMessageView {
   sentByName: string | null;
   eventReference: string | null;
   at: string;
+  /** D-47: location, contacts or reaction (`IN`). */
+  details: InboundDetails | null;
+  /** D-47: the image, video, audio, sticker or file, when the message has one. */
+  media: InboxMediaView | null;
+  /** D-47: `OUT` template sends. */
+  templateName: string | null;
+  templateCategory: string | null;
 }
 
 export interface ConversationDetail {

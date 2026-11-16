@@ -140,6 +140,14 @@ export const MESSAGES = {
     'مرّت أكثر من 23 ساعة على آخر رسالة من هذا الضيف، ولا يسمح واتساب بالرد الحر بعدها.',
   'replies.no_phone': 'لا يوجد رقم جوال لهذا الضيف.',
   'replies.not_configured': 'واتساب غير مهيأ على الخادم.',
+  'replies.file_invalid': 'يُرسل من الصندوق صور JPG أو PNG أو ملفات PDF فقط.',
+  'replies.file_too_large':
+    'الملف أكبر من المسموح: 5 ميجابايت للصورة و16 ميجابايت لملف PDF.',
+  'replies.template_not_found':
+    'القالب غير موجود أو غير معتمد في Meta، أو لا يمكن إرساله من الصندوق.',
+  'replies.template_parameters':
+    'عدد قيم المتغيرات لا يطابق القالب، أو فيها سطر جديد أو مسافات متتالية كثيرة.',
+  'replies.template_sent': 'أُرسل القالب.',
   'payments.not_pending': 'هذه الدفعة ليست معلّقة، فلا حاجة لمطابقتها.',
   'payments.provider_unavailable':
     'تعذّر الوصول إلى ميسّر الآن، حاول بعد قليل.',

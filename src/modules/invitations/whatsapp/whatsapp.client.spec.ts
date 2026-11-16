@@ -144,10 +144,20 @@ describe('HttpWhatsappClient', () => {
                   category: 'MARKETING',
                   rejected_reason: 'NONE',
                   components: [
+                    { type: 'HEADER', format: 'TEXT', text: 'دعوة' },
                     { type: 'BODY', text: 'مرحباً {{1}}' },
+                    { type: 'FOOTER', text: 'أثر' },
                     {
                       type: 'BUTTONS',
-                      buttons: [{ text: 'قبول' }, { text: 'اعتذار' }],
+                      buttons: [
+                        { type: 'QUICK_REPLY', text: 'قبول' },
+                        { type: 'QUICK_REPLY', text: 'اعتذار' },
+                        {
+                          type: 'URL',
+                          text: 'الموقع',
+                          url: 'https://example.com/{{1}}',
+                        },
+                      ],
                     },
                   ],
                 },
@@ -190,7 +200,12 @@ describe('HttpWhatsappClient', () => {
             status: 'APPROVED',
             rejectedReason: null,
             body: 'مرحباً {{1}}',
-            buttons: ['قبول', 'اعتذار'],
+            buttons: ['قبول', 'اعتذار', 'الموقع'],
+            headerFormat: 'TEXT',
+            headerText: 'دعوة',
+            footer: 'أثر',
+            buttonTypes: ['QUICK_REPLY', 'QUICK_REPLY', 'URL'],
+            dynamicUrlButton: true,
           },
           {
             id: '2',
@@ -201,6 +216,11 @@ describe('HttpWhatsappClient', () => {
             rejectedReason: 'INVALID_FORMAT',
             body: null,
             buttons: [],
+            headerFormat: null,
+            headerText: null,
+            footer: null,
+            buttonTypes: [],
+            dynamicUrlButton: false,
           },
         ],
       });
