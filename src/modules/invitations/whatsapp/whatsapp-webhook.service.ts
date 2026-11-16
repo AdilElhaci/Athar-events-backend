@@ -10,7 +10,9 @@ import {
   WebhookProvider,
   WebhookReceipt,
 } from '../../payments/entities/webhook-receipt.entity';
+import { InboxMediaService, InboundMediaInfo } from '../inbox-media.service';
 import {
+  InboundDetails,
   WhatsappInbound,
   WhatsappInboundOutcome,
   WhatsappInboundType,
@@ -68,6 +70,80 @@ const metaTime = (value: unknown): Date => {
     : new Date(now);
 };
 
+/** Meta message types that carry a downloadable file. */
+const MEDIA_TYPES = new Set(['image', 'video', 'audio', 'document', 'sticker']);
+
+const text = (value: unknown, max: number): string | undefined => {
+  const s = str(value)?.trim();
+  return s ? s.slice(0, max) : undefined;
+};
+
+/** D-47: the file of a media message, if it names one. */
+export function mediaOf(
+  type: string | undefined,
+  message: Json | undefined,
+): (InboundMediaInfo & { caption?: string }) | null {
+  if (!type || !MEDIA_TYPES.has(type)) return null;
+  const part = obj(message?.[type]);
+  const id = str(part?.id);
+  if (!id || !ID_PATTERN.test(id)) return null;
+  return {
+    metaMediaId: id,
+    mimeType: str(part?.mime_type) ?? '',
+    fileName: text(part?.filename, 255)?.replace(/[\r\n"\\/]/g, '_') ?? null,
+    caption: text(part?.caption, 4096),
+  };
+}
+
+/** D-47: what a location, contacts card or reaction carries, bounded. */
+export function detailsOf(
+  type: string | undefined,
+  message: Json | undefined,
+): InboundDetails | null {
+  if (type === 'location') {
+    const loc = obj(message?.location);
+    const latitude = Number(loc?.latitude);
+    const longitude = Number(loc?.longitude);
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    )
+      return null;
+    return {
+      kind: 'location',
+      latitude,
+      longitude,
+      name: text(loc?.name, 200),
+      address: text(loc?.address, 500),
+    };
+  }
+  if (type === 'contacts') {
+    const contacts = arr(message?.contacts)
+      .slice(0, 10)
+      .map((c) => ({
+        name: text(obj(obj(c)?.name)?.formatted_name, 200) ?? '',
+        phones: arr(obj(c)?.phones)
+          .slice(0, 5)
+          .map((p) => text(obj(p)?.phone, 30))
+          .filter((p): p is string => !!p),
+      }));
+    return contacts.length ? { kind: 'contacts', contacts } : null;
+  }
+  if (type === 'reaction') {
+    const reaction = obj(message?.reaction);
+    const messageId = str(reaction?.message_id);
+    return {
+      kind: 'reaction',
+      // No emoji: the guest removed the reaction.
+      emoji: text(reaction?.emoji, 16) ?? null,
+      messageId: messageId && ID_PATTERN.test(messageId) ? messageId : null,
+    };
+  }
+  return null;
+}
+
 export interface WebhookSummary {
   statuses: number;
   messages: number;
@@ -93,6 +169,7 @@ export class WhatsappWebhookService {
     private readonly sender: WhatsappSenderService,
     private readonly demo: WhatsappDemoService,
     private readonly bot: WhatsappBotService,
+    private readonly media: InboxMediaService,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.appSecret = config.get('WHATSAPP_APP_SECRET', { infer: true }) ?? null;
@@ -129,6 +206,7 @@ export class WhatsappWebhookService {
     const kicks: string[] = [];
     const demos: DemoInbound[] = [];
     const bots: BotInbound[] = [];
+    const downloads: string[] = [];
     if (str(obj(body)?.object) !== 'whatsapp_business_account') return summary;
 
     for (const entry of arr(obj(body)?.entry)) {
@@ -140,8 +218,11 @@ export class WhatsappWebhookService {
           summary.statuses++;
         }
         for (const message of arr(value?.messages)) {
-          const { intentId, demo, bot } = await this.applyMessage(obj(message));
+          const { intentId, demo, mediaId, bot } = await this.applyMessage(
+            obj(message),
+          );
           if (intentId) kicks.push(intentId);
+          if (mediaId) downloads.push(mediaId);
           if (demo) demos.push(demo);
           if (bot) bots.push(bot);
           summary.messages++;
@@ -159,6 +240,8 @@ export class WhatsappWebhookService {
     for (const inbound of demos) void this.demo.onInbound(inbound);
     // The auto-reply menu (D-49) too; off unless enabled, never throws, silent during a demo.
     for (const inbound of bots) void this.bot.onInbound(inbound);
+    // D-47: Meta's media links expire, so fetch the file now; the sweeper retries failures.
+    for (const id of downloads) void this.media.download(id);
     return summary;
   }
 
@@ -270,9 +353,10 @@ export class WhatsappWebhookService {
   private async applyMessage(message: Json | undefined): Promise<{
     intentId: string | null;
     demo: DemoInbound | null;
+    mediaId: string | null;
     bot: BotInbound | null;
   }> {
-    const nothing = { intentId: null, demo: null, bot: null };
+    const nothing = { intentId: null, demo: null, mediaId: null, bot: null };
     const providerId = str(message?.id);
     if (!providerId || !ID_PATTERN.test(providerId)) return nothing;
     const fromDigits = str(message?.from);
@@ -288,12 +372,17 @@ export class WhatsappWebhookService {
         ? obj(obj(message?.interactive)?.button_reply)
         : undefined;
     // D-43: what the guest wrote (or the button label) is kept for the admin replies inbox.
+    // D-47: a media message keeps its caption, and a location its name.
+    const file = mediaOf(type, message);
+    const details = detailsOf(type, message);
     const body =
       type === 'text'
         ? str(obj(message?.text)?.body)
         : type === 'button'
           ? str(obj(message?.button)?.text)
-          : str(buttonReply?.title);
+          : type === 'interactive'
+            ? str(buttonReply?.title)
+            : file?.caption;
     const metaType = type && /^[a-z_]{1,20}$/.test(type) ? type : null;
 
     return this.db.transaction(async (manager) => {
@@ -314,6 +403,7 @@ export class WhatsappWebhookService {
                 : WhatsappInboundType.OTHER,
           buttonPayload: payload?.slice(0, 64) ?? null,
           body: body ? body.slice(0, 4096) : null,
+          details,
           metaType,
           outcome: WhatsappInboundOutcome.IGNORED,
         })
@@ -340,6 +430,9 @@ export class WhatsappWebhookService {
         guestId: guest?.id ?? null,
         eventId: guest?.eventId ?? null,
       });
+      const mediaId = file
+        ? await this.media.recordInbound(manager, inboundId, file)
+        : null;
       const demo: DemoInbound | null =
         fromPhone && (type === 'text' || buttonReply)
           ? {
@@ -366,7 +459,7 @@ export class WhatsappWebhookService {
               buttonId: str(buttonReply?.id),
             }
           : null;
-      return { intentId, demo, bot };
+      return { intentId, demo, mediaId, bot };
     });
   }
 

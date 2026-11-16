@@ -29,7 +29,12 @@ import {
   WhatsappMessageKind,
   WhatsappMessageState,
 } from '../src/modules/invitations/entities/whatsapp-message.entity';
+import {
+  WhatsappMedia,
+  WhatsappMediaState,
+} from '../src/modules/invitations/entities/whatsapp-media.entity';
 import { WhatsappReply } from '../src/modules/invitations/entities/whatsapp-reply.entity';
+import { InboxMediaService } from '../src/modules/invitations/inbox-media.service';
 import { WhatsappWebhookService } from '../src/modules/invitations/whatsapp/whatsapp-webhook.service';
 import { FakeWhatsappClient } from '../src/modules/invitations/whatsapp/testing/fake-whatsapp.client';
 import { WhatsappClient } from '../src/modules/invitations/whatsapp/whatsapp.client';
@@ -661,6 +666,366 @@ describe('Message log and resolution (e2e, SCR-25)', () => {
         .getRepository(AdminAction)
         .findBy({ action: 'reply.send' });
       expect(JSON.stringify(actions)).not.toContain('أولى');
+    });
+
+    describe('D-47: media, locations and templates', () => {
+      const JPEG = Buffer.concat([
+        Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+        Buffer.alloc(64, 1),
+      ]);
+      const PDF = Buffer.from('%PDF-1.4\n%test\n');
+      const media = () => db.getRepository(WhatsappMedia);
+      const inboundHook = (message: object) =>
+        app.get(WhatsappWebhookService).handle({
+          object: 'whatsapp_business_account',
+          entry: [
+            {
+              changes: [
+                {
+                  field: 'messages',
+                  value: {
+                    messages: [
+                      {
+                        id: `wamid.in.${++seq}`,
+                        timestamp: String(Math.floor(Date.now() / 1000)),
+                        ...message,
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        });
+      /** The download runs after commit; wait until it settles. */
+      const settled = async (inboundId: string) => {
+        for (let i = 0; i < 50; i++) {
+          const row = await media().findOneBy({ inboundId });
+          if (row && row.state !== WhatsappMediaState.PENDING) return row;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        return media().findOneByOrFail({ inboundId });
+      };
+      const attach = (phone: string, file: Buffer, name: string, extra = {}) =>
+        csrf(
+          asAdmin(
+            server().post(
+              `/api/admin/inbox/conversations/${idOf(phone)}/attachments`,
+            ),
+          ),
+        )
+          .field({ requestId: uuid(), ...extra })
+          .attach('file', file, name);
+      const sendTemplate = (phone: string, body: object) =>
+        csrf(
+          asAdmin(
+            server().post(
+              `/api/admin/inbox/conversations/${idOf(phone)}/templates`,
+            ),
+          ),
+        ).send(body);
+
+      it('stores inbound media once, serves it to admins, and keeps locations', async () => {
+        const phone = '+966541111111';
+        meta.media.set('media.in.1', { data: JPEG, mimeType: 'image/jpeg' });
+        await inboundHook({
+          from: idOf(phone),
+          type: 'image',
+          image: {
+            id: 'media.in.1',
+            mime_type: 'image/jpeg',
+            caption: 'هذا مدخل القاعة؟',
+          },
+        });
+        const row = await inbound().findOneByOrFail({ fromPhone: phone });
+        expect(row).toMatchObject({
+          type: WhatsappInboundType.OTHER,
+          metaType: 'image',
+          body: 'هذا مدخل القاعة؟',
+        });
+        const stored = await settled(row.id);
+        expect(stored).toMatchObject({
+          state: 'STORED',
+          sizeBytes: JPEG.length,
+        });
+
+        await inboundHook({
+          from: idOf(phone),
+          type: 'location',
+          location: {
+            latitude: 24.7136,
+            longitude: 46.6753,
+            name: 'قاعة الضيافة',
+            address: 'الرياض',
+          },
+        });
+
+        const thread = await asAdmin(
+          server().get(`/api/admin/inbox/conversations/${idOf(phone)}`),
+        ).expect(200);
+        const [location, image] = thread.body.data.messages;
+        expect(location).toMatchObject({
+          metaType: 'location',
+          details: {
+            kind: 'location',
+            latitude: 24.7136,
+            name: 'قاعة الضيافة',
+          },
+        });
+        expect(image.media).toMatchObject({
+          id: stored.id,
+          state: 'STORED',
+          mimeType: 'image/jpeg',
+        });
+        expect(thread.body.data.conversation.unread).toBe(2);
+
+        const file = await asAdmin(
+          server().get(`/api/admin/inbox/media/${stored.id}`),
+        )
+          .buffer(true)
+          .parse((res, done) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (c: Buffer) => chunks.push(c));
+            res.on('end', () => done(null, Buffer.concat(chunks)));
+          })
+          .expect(200);
+        expect(file.headers['content-type']).toBe('image/jpeg');
+        expect(file.headers['x-content-type-options']).toBe('nosniff');
+        expect(Buffer.compare(file.body as Buffer, JPEG)).toBe(0);
+        await server().get(`/api/admin/inbox/media/${stored.id}`).expect(401);
+
+        // A redelivered webhook neither duplicates the message nor downloads again.
+        expect(meta.downloads).toEqual(['media.in.1']);
+      });
+
+      it('retries a failed download from the sweeper and records an oversized file', async () => {
+        const phone = '+966542222222';
+        meta.nextDownload = {
+          ok: false,
+          tooLarge: false,
+          retry: true,
+          code: 'ETIMEDOUT',
+        };
+        await inboundHook({
+          from: idOf(phone),
+          type: 'audio',
+          audio: { id: 'media.in.2', mime_type: 'audio/ogg; codecs=opus' },
+        });
+        const voice = await inbound().findOneByOrFail({ fromPhone: phone });
+        // Still pending after the first attempt.
+        for (let i = 0; i < 50 && !meta.downloads.length; i++)
+          await new Promise((r) => setTimeout(r, 20));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(
+          await media().findOneByOrFail({ inboundId: voice.id }),
+        ).toMatchObject({
+          state: 'PENDING',
+          attempts: 1,
+          mimeType: 'audio/ogg',
+        });
+
+        meta.media.set('media.in.2', {
+          data: Buffer.from('OggS-voice'),
+          mimeType: 'audio/ogg',
+        });
+        expect(await app.get(InboxMediaService).retryPending(5)).toBe(1);
+        expect(
+          await media().findOneByOrFail({ inboundId: voice.id }),
+        ).toMatchObject({ state: 'STORED', attempts: 2 });
+
+        meta.nextDownload = {
+          ok: false,
+          tooLarge: true,
+          size: 90_000_000,
+          mimeType: 'video/mp4',
+        };
+        await inboundHook({
+          from: idOf(phone),
+          type: 'video',
+          video: { id: 'media.in.3', mime_type: 'video/mp4' },
+        });
+        const video = await inbound().findOneByOrFail({ metaType: 'video' });
+        expect(await settled(video.id)).toMatchObject({
+          state: 'TOO_LARGE',
+          sizeBytes: 90_000_000,
+        });
+      });
+
+      it('sends an image or PDF inside the window, once per request id', async () => {
+        const phone = '+966543333333';
+        await write(phone);
+        const image = await attach(phone, JPEG, 'photo.jpg', {
+          caption: 'مدخل القاعة',
+        }).expect(200);
+        expect(image.body.data).toMatchObject({
+          direction: 'OUT',
+          metaType: 'image',
+          body: 'مدخل القاعة',
+          state: 'SENT',
+          media: { state: 'STORED', mimeType: 'image/jpeg' },
+        });
+        const pdf = await attach(phone, PDF, 'برنامج الحفل.pdf').expect(200);
+        expect(pdf.body.data).toMatchObject({
+          metaType: 'document',
+          body: null,
+          media: { mimeType: 'application/pdf', fileName: 'برنامج الحفل.pdf' },
+        });
+        expect(meta.sent.map((m) => m.type)).toEqual(['image', 'document']);
+        expect(meta.sent[1]).toMatchObject({ fileName: 'برنامج الحفل.pdf' });
+
+        // Same request id: the first outcome, nothing sent again.
+        const requestId = uuid();
+        const first = await attach(phone, JPEG, 'a.jpg', { requestId }).expect(
+          200,
+        );
+        const again = await attach(phone, JPEG, 'a.jpg', { requestId }).expect(
+          200,
+        );
+        expect(again.body.data.id).toBe(first.body.data.id);
+        expect(meta.sent).toHaveLength(3);
+
+        // Only JPEG, PNG and PDF, checked by content.
+        expect(
+          (await attach(phone, Buffer.from('<svg/>'), 'x.jpg').expect(400)).body
+            .code,
+        ).toBe('replies.file_invalid');
+
+        // An upload Meta refuses is recorded as failed, with the file kept.
+        meta.nextUploadFailure = {
+          ok: false,
+          retry: false,
+          code: 'meta_131053',
+        };
+        expect((await attach(phone, JPEG, 'b.jpg').expect(422)).body.code).toBe(
+          'replies.failed',
+        );
+        const failed = await db
+          .getRepository(WhatsappReply)
+          .findOneByOrFail({ errorCode: 'meta_131053' });
+        expect(failed.state).toBe('FAILED');
+        expect(await media().countBy({ replyId: failed.id })).toBe(1);
+
+        // Outside the window: refused before anything is uploaded.
+        const late = '+966543333334';
+        await write(late, { agoMs: 23 * 60 * 60_000 + 60_000 });
+        expect((await attach(late, JPEG, 'c.jpg').expect(422)).body.code).toBe(
+          'replies.window_closed',
+        );
+        expect(meta.uploads).toHaveLength(3);
+      });
+
+      it('lists sendable templates and sends one to any number, also a new one', async () => {
+        const base = {
+          rejectedReason: null,
+          footer: null,
+          buttonTypes: [] as string[],
+          buttons: [] as string[],
+        };
+        meta.templates = [
+          {
+            ...base,
+            id: '1',
+            name: 'event_reminder',
+            language: 'ar',
+            category: 'UTILITY',
+            status: 'APPROVED',
+            headerFormat: 'TEXT',
+            headerText: 'تذكير',
+            body: 'مرحباً {{1}}، نذكرك بموعد {{2}}.',
+            footer: 'أثر إيفنتس',
+          },
+          {
+            ...base,
+            id: '2',
+            name: 'offer_with_image',
+            language: 'ar',
+            category: 'MARKETING',
+            status: 'APPROVED',
+            headerFormat: 'IMAGE',
+            body: 'عرض خاص',
+          },
+          {
+            ...base,
+            id: '3',
+            name: 'athar_invitation',
+            language: 'ar',
+            category: 'MARKETING',
+            status: 'APPROVED',
+            body: 'دعوة {{1}}',
+          },
+          {
+            ...base,
+            id: '4',
+            name: 'pending_one',
+            language: 'ar',
+            category: 'UTILITY',
+            status: 'PENDING',
+            body: 'نص',
+          },
+        ];
+        const list = await asAdmin(
+          server().get('/api/admin/inbox/templates'),
+        ).expect(200);
+        expect(list.body.data.templates).toEqual([
+          expect.objectContaining({
+            name: 'event_reminder',
+            category: 'UTILITY',
+            variables: 2,
+          }),
+        ]);
+
+        // A number that never wrote: the template starts the conversation.
+        const phone = '+966544444444';
+        const requestId = uuid();
+        const body = {
+          requestId,
+          name: 'event_reminder',
+          language: 'ar',
+          parameters: ['سارة', 'الحفل'],
+        };
+        const sent = await sendTemplate(phone, body).expect(200);
+        expect(sent.body.code).toBe('replies.template_sent');
+        expect(sent.body.data).toMatchObject({
+          metaType: 'template',
+          templateName: 'event_reminder',
+          templateCategory: 'UTILITY',
+          body: 'تذكير\n\nمرحباً سارة، نذكرك بموعد الحفل.\n\nأثر إيفنتس',
+        });
+        await sendTemplate(phone, body).expect(200);
+        expect(meta.sent).toEqual([
+          expect.objectContaining({
+            type: 'template',
+            to: phone,
+            template: expect.objectContaining({
+              name: 'event_reminder',
+              bodyParameters: ['سارة', 'الحفل'],
+              quickReplyPayloads: [],
+            }),
+          }),
+        ]);
+        const thread = await asAdmin(
+          server().get(`/api/admin/inbox/conversations/${idOf(phone)}`),
+        ).expect(200);
+        // A template does not open the free-form window: only the guest's message does.
+        expect(thread.body.data.conversation.replyWindowClosesAt).toBeNull();
+
+        const wrong = (extra: object) =>
+          sendTemplate(phone, { ...body, requestId: uuid(), ...extra });
+        await wrong({ parameters: ['سارة'] }).expect(400);
+        await wrong({ parameters: ['سارة', 'سطر\nجديد'] }).expect(400);
+        await wrong({ name: 'offer_with_image', parameters: [] }).expect(422);
+        await wrong({ name: 'athar_invitation', parameters: ['x'] }).expect(
+          422,
+        );
+        meta.templatesError = 'meta_190';
+        await wrong({}).expect(503);
+        expect(meta.sent).toHaveLength(1);
+        const audit = await db
+          .getRepository(AdminAction)
+          .findBy({ action: 'reply.template' });
+        expect(audit).toHaveLength(1);
+        expect(JSON.stringify(audit)).not.toContain('سارة');
+      });
     });
   });
 });

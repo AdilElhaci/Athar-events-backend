@@ -11,6 +11,8 @@ import {
   WhatsappMessageState,
 } from './whatsapp-message.entity';
 
+export type ReplyMessageType = 'text' | 'image' | 'document' | 'template';
+
 export enum WhatsappReplySource {
   ADMIN = 'ADMIN',
   /** The auto-reply menu (D-49). */
@@ -18,7 +20,7 @@ export enum WhatsappReplySource {
 }
 
 /**
- * D-44/D-45: a free-form text an admin sent from the inbox inside the 24 h customer-service window,
+ * D-44/D-45/D-47: a free-form text an admin sent from the inbox inside the 24 h customer-service window,
  * or an answer of the auto-reply menu (D-49).
  * Sent once, never retried by the system; `UNKNOWN` is shown as unconfirmed.
  */
@@ -56,8 +58,43 @@ export class WhatsappReply {
   @Column({ name: 'to_phone', type: 'varchar', length: 16 })
   toPhone!: string;
 
-  @Column({ type: 'text' })
-  body!: string;
+  /** D-47: `text`, `image` or `document` (inside the window), or `template` (any time). */
+  @Column({
+    name: 'message_type',
+    type: 'varchar',
+    length: 20,
+    default: 'text',
+  })
+  messageType!: ReplyMessageType;
+
+  /** The text, a media caption, or the template body with its variables filled in. */
+  @Column({ type: 'text', nullable: true })
+  body!: string | null;
+
+  @Column({
+    name: 'template_name',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
+  templateName!: string | null;
+
+  @Column({
+    name: 'template_language',
+    type: 'varchar',
+    length: 15,
+    nullable: true,
+  })
+  templateLanguage!: string | null;
+
+  /** `UTILITY` or `MARKETING` as Meta classified it when sent; Meta prices by it. */
+  @Column({
+    name: 'template_category',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  templateCategory!: string | null;
 
   @Column({
     type: 'enum',

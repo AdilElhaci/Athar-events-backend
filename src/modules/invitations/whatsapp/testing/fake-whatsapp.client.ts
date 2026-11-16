@@ -1,5 +1,6 @@
 import {
   ButtonsMessage,
+  DownloadOutcome,
   MessageTemplate,
   NewTemplate,
   SendOutcome,
@@ -14,7 +15,15 @@ export type FakeSent =
   | { type: 'template'; to: string; template: TemplateMessage; id: string }
   | { type: 'image'; to: string; mediaId: string; caption: string; id: string }
   | { type: 'text'; to: string; body: string; id: string }
-  | { type: 'buttons'; to: string; message: ButtonsMessage; id: string };
+  | { type: 'buttons'; to: string; message: ButtonsMessage; id: string }
+  | {
+      type: 'document';
+      to: string;
+      mediaId: string;
+      fileName: string;
+      caption?: string;
+      id: string;
+    };
 
 /**
  * In-memory Meta for tests. Every accepted message gets a `wamid.test.<n>` id; set `nextOutcome`
@@ -104,11 +113,70 @@ export class FakeWhatsappClient extends WhatsappClient {
   }
 
   uploadPng(png: Buffer): Promise<UploadOutcome> {
-    this.uploads.push(png);
+    return this.uploadMedia(png);
+  }
+
+  /** Makes the next upload fail. */
+  nextUploadFailure: Exclude<UploadOutcome, { ok: true }> | null = null;
+
+  uploadMedia(data: Buffer): Promise<UploadOutcome> {
+    if (this.nextUploadFailure) {
+      const failure = this.nextUploadFailure;
+      this.nextUploadFailure = null;
+      return Promise.resolve(failure);
+    }
+    this.uploads.push(data);
     return Promise.resolve({
       ok: true,
       mediaId: `media_${this.uploads.length}`,
     });
+  }
+
+  /** Meta's media by id; a missing id answers like Meta's 404 (`meta_100`, not retried). */
+  media = new Map<string, { data: Buffer; mimeType: string }>();
+  /** Makes the next download answer this instead. */
+  nextDownload: DownloadOutcome | null = null;
+  downloads: string[] = [];
+
+  downloadMedia(mediaId: string, maxBytes: number): Promise<DownloadOutcome> {
+    this.downloads.push(mediaId);
+    if (this.nextDownload) {
+      const outcome = this.nextDownload;
+      this.nextDownload = null;
+      return Promise.resolve(outcome);
+    }
+    const file = this.media.get(mediaId);
+    if (!file)
+      return Promise.resolve({
+        ok: false,
+        tooLarge: false,
+        retry: false,
+        code: 'meta_100',
+      });
+    if (file.data.length > maxBytes)
+      return Promise.resolve({
+        ok: false,
+        tooLarge: true,
+        size: file.data.length,
+        mimeType: file.mimeType,
+      });
+    return Promise.resolve({ ok: true, ...file });
+  }
+
+  sendDocument(
+    to: string,
+    mediaId: string,
+    fileName: string,
+    caption?: string,
+  ): Promise<SendOutcome> {
+    return this.accept((id) => ({
+      type: 'document',
+      to,
+      mediaId,
+      fileName,
+      caption,
+      id,
+    }));
   }
 
   reset(): void {
@@ -120,6 +188,10 @@ export class FakeWhatsappClient extends WhatsappClient {
     this.sent = [];
     this.uploads = [];
     this.nextOutcome = null;
+    this.nextUploadFailure = null;
+    this.media.clear();
+    this.nextDownload = null;
+    this.downloads = [];
   }
 
   private accept(build: (id: string) => FakeSent): Promise<SendOutcome> {

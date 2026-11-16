@@ -22,6 +22,18 @@ export enum WhatsappInboundOutcome {
   IGNORED = 'IGNORED',
 }
 
+/** D-47: the structured part of a non-text message, already bounded by the webhook. */
+export type InboundDetails =
+  | {
+      kind: 'location';
+      latitude: number;
+      longitude: number;
+      name?: string;
+      address?: string;
+    }
+  | { kind: 'contacts'; contacts: Array<{ name: string; phones: string[] }> }
+  | { kind: 'reaction'; emoji: string | null; messageId: string | null };
+
 /**
  * One inbound message. Its text is kept for the admin replies inbox (D-43) and deleted with the
  * row by the retention job (data-model.md).
@@ -77,6 +89,13 @@ export class WhatsappInbound {
   /** Text of a text message, or the label of the button tapped; at most 4096 characters. */
   @Column({ type: 'text', nullable: true })
   body!: string | null;
+
+  /**
+   * D-47: what a location, contacts card or reaction carries (`InboundDetails`); null otherwise.
+   * Personal data like `body`: never logged, deleted with the row.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  details!: InboundDetails | null;
 
   /** Meta's message type (`text`, `button`, `image`, `audio`, …). */
   @Column({ name: 'meta_type', type: 'varchar', length: 20, nullable: true })
