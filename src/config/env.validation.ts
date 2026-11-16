@@ -221,6 +221,17 @@ export class EnvironmentVariables {
   @Min(0)
   WHATSAPP_DEMO_DAILY_LIMIT = 200;
 
+  /** D-49: the WhatsApp auto-reply menu answers inbound messages. Off unless set to true. */
+  @Transform(toBool)
+  @IsBoolean()
+  WHATSAPP_BOT_ENABLED = false;
+
+  /** D-49: hours the bot stays silent on a number after a handoff or an admin reply. */
+  @IsInt()
+  @Min(1)
+  @Max(72)
+  WHATSAPP_BOT_HANDOFF_HOURS = 12;
+
   /**
    * Comma-separated roles this process runs (D-09): `api` (HTTP), `worker` (BullMQ processors),
    * `scheduler` (sweepers, reconciliation, alerts). One container runs all three by default.

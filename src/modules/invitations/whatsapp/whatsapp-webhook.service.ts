@@ -21,6 +21,7 @@ import {
   WhatsappMessageKind,
   WhatsappMessageState,
 } from '../entities/whatsapp-message.entity';
+import { BotInbound, WhatsappBotService } from './whatsapp-bot.service';
 import { DemoInbound, WhatsappDemoService } from './whatsapp-demo.service';
 import {
   qrKey,
@@ -29,6 +30,16 @@ import {
   WhatsappSenderService,
 } from './whatsapp-sender.service';
 
+/** Inbound types the auto-reply menu answers with the menu (D-49); not reactions or system notices. */
+const BOT_OTHER_TYPES = new Set([
+  'image',
+  'audio',
+  'video',
+  'document',
+  'sticker',
+  'location',
+  'contacts',
+]);
 const ID_PATTERN = /^[\w.=+/-]{1,128}$/;
 const PHONE_DIGITS = /^\d{6,15}$/;
 const STATUSES: Record<string, WhatsappDeliveryStatus> = {
@@ -81,6 +92,7 @@ export class WhatsappWebhookService {
     private readonly messages: Repository<WhatsappMessage>,
     private readonly sender: WhatsappSenderService,
     private readonly demo: WhatsappDemoService,
+    private readonly bot: WhatsappBotService,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.appSecret = config.get('WHATSAPP_APP_SECRET', { infer: true }) ?? null;
@@ -116,6 +128,7 @@ export class WhatsappWebhookService {
     const summary: WebhookSummary = { statuses: 0, messages: 0 };
     const kicks: string[] = [];
     const demos: DemoInbound[] = [];
+    const bots: BotInbound[] = [];
     if (str(obj(body)?.object) !== 'whatsapp_business_account') return summary;
 
     for (const entry of arr(obj(body)?.entry)) {
@@ -127,9 +140,10 @@ export class WhatsappWebhookService {
           summary.statuses++;
         }
         for (const message of arr(value?.messages)) {
-          const { intentId, demo } = await this.applyMessage(obj(message));
+          const { intentId, demo, bot } = await this.applyMessage(obj(message));
           if (intentId) kicks.push(intentId);
           if (demo) demos.push(demo);
+          if (bot) bots.push(bot);
           summary.messages++;
         }
       }
@@ -143,6 +157,8 @@ export class WhatsappWebhookService {
         );
     // The public demo (/try-whatsapp) answers after commit too; it never throws.
     for (const inbound of demos) void this.demo.onInbound(inbound);
+    // The auto-reply menu (D-49) too; off unless enabled, never throws, silent during a demo.
+    for (const inbound of bots) void this.bot.onInbound(inbound);
     return summary;
   }
 
@@ -251,10 +267,12 @@ export class WhatsappWebhookService {
    * a retried delivery a no-op. Returns a QR intent to send after commit, if one was created, and
    * the message for the public demo when it may belong to one (text or a reply button).
    */
-  private async applyMessage(
-    message: Json | undefined,
-  ): Promise<{ intentId: string | null; demo: DemoInbound | null }> {
-    const nothing = { intentId: null, demo: null };
+  private async applyMessage(message: Json | undefined): Promise<{
+    intentId: string | null;
+    demo: DemoInbound | null;
+    bot: BotInbound | null;
+  }> {
+    const nothing = { intentId: null, demo: null, bot: null };
     const providerId = str(message?.id);
     if (!providerId || !ID_PATTERN.test(providerId)) return nothing;
     const fromDigits = str(message?.from);
@@ -330,7 +348,25 @@ export class WhatsappWebhookService {
               buttonId: str(buttonReply?.id),
             }
           : null;
-      return { intentId, demo };
+      // Not an RSVP button (those have their own flow): free text, our reply buttons, media.
+      const botKind: BotInbound['kind'] | null =
+        type === 'text'
+          ? 'text'
+          : buttonReply
+            ? 'button'
+            : metaType && BOT_OTHER_TYPES.has(metaType)
+              ? 'other'
+              : null;
+      const bot: BotInbound | null =
+        fromPhone && botKind
+          ? {
+              inboundId,
+              fromPhone,
+              kind: botKind,
+              buttonId: str(buttonReply?.id),
+            }
+          : null;
+      return { intentId, demo, bot };
     });
   }
 

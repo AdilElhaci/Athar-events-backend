@@ -94,6 +94,8 @@ export interface InboxMessageView {
   deliveryStatus: WhatsappDeliveryStatus | null;
   errorCode: string | null;
   sentByName: string | null;
+  /** `OUT` only: an admin's reply or the auto-reply menu's (D-49). */
+  source: 'ADMIN' | 'BOT' | null;
   eventReference: string | null;
   at: string;
 }

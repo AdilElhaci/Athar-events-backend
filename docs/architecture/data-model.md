@@ -194,12 +194,13 @@ Inbound WhatsApp messages: RSVP button replies and, since [D-43](../product/deci
 
 ### whatsapp_replies
 
-Free-form texts admins send from the inbox inside the 24 h window ([D-44](../product/decisions.md#d-44), [D-45](../product/decisions.md#d-45)). Indexes (`event_id`, `created_at` desc) and (`to_phone`, `created_at` desc).
+Free-form texts admins send from the inbox inside the 24 h window ([D-44](../product/decisions.md#d-44), [D-45](../product/decisions.md#d-45)), and the answers of the auto-reply menu ([D-49](../product/decisions.md#d-49)). Indexes (`event_id`, `created_at` desc), (`to_phone`, `created_at` desc), and (`to_phone`, `created_at` desc) where `source = 'ADMIN'` (the bot's silence after an admin reply).
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | event_id, guest_id | uuid null | FKs (restrict); the guest the number belongs to, null for any other number (D-45) |
-| sent_by_user_id | uuid | FK users (restrict) |
+| source | `whatsapp_reply_source` | `ADMIN` (default) or `BOT` (D-49) |
+| sent_by_user_id | uuid null | FK users (restrict); set for `ADMIN`, null for `BOT` (check) |
 | request_id | uuid | `UQ`; client-generated per submit, a repeat never sends twice |
 | to_phone | varchar(16) | Guest phone at send time |
 | body | text | 1–4096 characters (check) |
