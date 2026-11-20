@@ -3,12 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { EnvironmentVariables } from '../../../config/env.validation';
-import {
-  hashQrToken,
-  newQrToken,
-  qrUrl,
-  renderQrPng,
-} from '../../checkin/qr-token';
+import { renderQrCardPng } from '../../checkin/qr-card';
+import { hashQrToken, newQrToken, qrUrl } from '../../checkin/qr-token';
 import {
   Event,
   EventCampaignStatus,
@@ -325,7 +321,16 @@ export class WhatsappSenderService {
     if (!issued.affected) return { outcome: 'CANCELLED', code: 'superseded' };
 
     const url = qrUrl(this.appOrigin, token);
-    const upload = await this.client.uploadPng(await renderQrPng(url));
+    const upload = await this.client.uploadPng(
+      renderQrCardPng({
+        url,
+        eventName: event.name,
+        guestName: guest.name,
+        startsAt: event.startsAt,
+        timezone: event.timezone,
+        venueName: event.venueName,
+      }),
+    );
     if (!upload.ok)
       return { outcome: upload.retry ? 'RETRY' : 'FAILED', code: upload.code };
     const caption = `رمز دخولك إلى ${event.name}.\nيُرجى إبرازه عند الوصول.\n${url}`;

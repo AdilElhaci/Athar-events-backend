@@ -12,14 +12,6 @@ export const hashQrToken = (token: string): string =>
 export const qrUrl = (appOrigin: string, token: string): string =>
   `${appOrigin.replace(/\/+$/, '')}/i/${token}`;
 
-export const renderQrPng = (url: string): Promise<Buffer> =>
-  QRCode.toBuffer(url, {
-    type: 'png',
-    errorCorrectionLevel: 'M',
-    margin: 4,
-    width: 640,
-  });
-
 /** The same URL as an SVG for the guest page, so the browser needs no QR library. */
 export const renderQrSvg = (url: string): Promise<string> =>
   QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });

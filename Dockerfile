@@ -28,6 +28,8 @@ RUN apk add --no-cache dumb-init \
 
 COPY --from=prod-deps --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
+# Fonts for the WhatsApp entry card (src/modules/checkin/qr-card.ts).
+COPY --chown=nestjs:nodejs assets ./assets
 COPY --chown=nestjs:nodejs package.json ./
 
 USER nestjs

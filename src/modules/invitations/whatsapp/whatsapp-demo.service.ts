@@ -14,7 +14,7 @@ import {
   REDIS,
 } from '../../auth/services/rate-limit.service';
 import { sha256 } from '../../auth/utils/crypto.util';
-import { renderQrPng } from '../../checkin/qr-token';
+import { renderQrCardPng } from '../../checkin/qr-card';
 import { normalizeSaudiMobile } from '../../users/utils/phone';
 import { renderInvitation } from '../invitation-template';
 import { WhatsappClient } from './whatsapp.client';
@@ -63,6 +63,8 @@ const SAMPLE = {
   venue: 'قاعة الياسمين، الرياض',
 };
 const GUEST_NAME = 'ضيفنا العزيز';
+/** `SAMPLE.dateText` as an instant (Riyadh is UTC+3), for the entry card. */
+const SAMPLE_STARTS_AT = new Date('2026-11-12T17:00:00Z');
 
 /** Sets the state only when the current one is among the allowed ones; returns 1 when it did. */
 const TRANSITION_SCRIPT = `
@@ -247,7 +249,14 @@ export class WhatsappDemoService {
       return;
     // A harmless code: it opens the demo page, never a real guest pass.
     const upload = await this.client.uploadPng(
-      await renderQrPng(`${this.appOrigin}/try-whatsapp`),
+      renderQrCardPng({
+        url: `${this.appOrigin}/try-whatsapp`,
+        eventName: SAMPLE.eventName,
+        guestName: GUEST_NAME,
+        startsAt: SAMPLE_STARTS_AT,
+        timezone: 'Asia/Riyadh',
+        venueName: SAMPLE.venue,
+      }),
     );
     if (!upload.ok) {
       await this.transition(sessionId, 'FAILED', ['ACCEPTED']);
