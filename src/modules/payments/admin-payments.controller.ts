@@ -22,6 +22,7 @@ import { UserType } from '../users/entities/user.entity';
 import { AdminPaymentsService } from './admin-payments.service';
 import {
   AdminPaymentsQueryDto,
+  AdminPaymentStatsView,
   AdminPaymentView,
   RefundReasonDto,
 } from './dto/admin-payment.dto';
@@ -43,6 +44,12 @@ export class AdminPaymentsController {
     @Query() query: AdminPaymentsQueryDto,
   ): Promise<Paginated<AdminPaymentView>> {
     return this.payments.list(query);
+  }
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Monthly income and event counts.' })
+  stats(): Promise<AdminPaymentStatsView> {
+    return this.payments.stats();
   }
 
   @Post(':id/reconcile')

@@ -401,6 +401,130 @@ describe('Admin payments, refunds and the action log (e2e, T-P2-09)', () => {
     });
   });
 
+  it('cancels an open event without a refund; a paid one can still be refunded after', async () => {
+    const event = await createEvent();
+    const { payment } = await paidAtMoyasar(event.id);
+    await paidWebhook(payment);
+    const guest = await db.getRepository(Guest).save(
+      db.getRepository(Guest).create({
+        eventId: event.id,
+        name: 'ضيف',
+        phone: `+9665${String(++phoneSeq).padStart(8, '0')}`,
+        kind: GuestKind.INITIAL,
+        qrTokenHash: 'b'.repeat(64),
+      }),
+    );
+    await db.getRepository(WhatsappMessage).save(
+      db.getRepository(WhatsappMessage).create({
+        eventId: event.id,
+        guestId: guest.id,
+        kind: WhatsappMessageKind.INVITATION,
+        logicalKey: `invitation:${guest.id}:1`,
+        state: WhatsappMessageState.QUEUED,
+      }),
+    );
+
+    await csrf(
+      as('owner', server().post(`/api/admin/events/${event.id}/cancel`)),
+    )
+      .send({ reason: 'إلغاء' })
+      .expect(403);
+    const res = await adminPost(`/admin/events/${event.id}/cancel`, {
+      reason: 'ألغى العميل المناسبة',
+    }).expect(200);
+    expect(res.body.code).toBe('events.cancelled');
+    const cancelled = await eventOf(event.id);
+    expect(cancelled).toMatchObject({
+      status: EventStatus.CANCELLED,
+      paymentStatus: EventPaymentStatus.PAID,
+      campaignStatus: EventCampaignStatus.CANCELLED,
+    });
+    expect(cancelled.cancelledAt).toBeInstanceOf(Date);
+    expect(
+      (await db.getRepository(Guest).findOneByOrFail({ id: guest.id }))
+        .qrTokenHash,
+    ).toBeNull();
+    const [message] = await db
+      .getRepository(WhatsappMessage)
+      .findBy({ eventId: event.id });
+    expect([message.state, message.lastErrorCode]).toEqual([
+      'CANCELLED',
+      'event_cancelled',
+    ]);
+    const audit = await db
+      .getRepository(AdminAction)
+      .findOneByOrFail({ action: 'event.cancelled', targetId: event.id });
+    expect(audit.summary).toEqual({
+      reason: 'ألغى العميل المناسبة',
+      previousStatus: 'ACTIVE',
+      paymentStatus: 'PAID',
+      previousCampaign: 'NOT_SCHEDULED',
+      messagesCancelled: 1,
+      qrRevoked: 1,
+    });
+
+    const again = await adminPost(`/admin/events/${event.id}/cancel`, {
+      reason: 'مرة أخرى',
+    }).expect(409);
+    expect(again.body.code).toBe('events.not_cancellable');
+    await adminPost(`/admin/events/${event.id}/mark-refunded`, {
+      reason: 'أُعيد المبلغ من ميسّر',
+    }).expect(200);
+    expect((await eventOf(event.id)).paymentStatus).toBe(
+      EventPaymentStatus.REFUNDED,
+    );
+
+    // An unpaid draft is cancelled too.
+    const draft = await createEvent();
+    await adminPost(`/admin/events/${draft.id}/cancel`, {
+      reason: 'طلب تجريبي',
+    }).expect(200);
+    expect((await eventOf(draft.id)).status).toBe(EventStatus.CANCELLED);
+  });
+
+  it('reports monthly income net of refunds and event counts', async () => {
+    const empty = await adminGet('/admin/payments/stats').expect(200);
+    expect(empty.body.data).toMatchObject({
+      thisMonth: { revenue: 0, paidCount: 0, refunded: 0, newEvents: 0 },
+      totalRevenue: 0,
+      events: { total: 0 },
+    });
+    expect(empty.body.data.monthly).toHaveLength(6);
+
+    const kept = await createEvent();
+    await paidWebhook((await paidAtMoyasar(kept.id)).payment);
+    const refunded = await createEvent();
+    await paidWebhook((await paidAtMoyasar(refunded.id)).payment);
+    await adminPost(`/admin/events/${refunded.id}/mark-refunded`, {
+      reason: 'استرجاع كامل',
+    }).expect(200);
+    await createEvent();
+
+    const res = await adminGet('/admin/payments/stats').expect(200);
+    const stats = res.body.data;
+    expect(stats.thisMonth).toMatchObject({
+      revenue: 150_000,
+      paidCount: 1,
+      refunded: 150_000,
+      newEvents: 3,
+    });
+    expect(stats.monthly.at(-1)).toMatchObject({
+      month: stats.thisMonth.month,
+      revenue: 150_000,
+    });
+    expect(stats.totalRevenue).toBe(150_000);
+    expect(stats.totalRefunded).toBe(150_000);
+    expect(stats.events).toEqual({
+      total: 3,
+      draft: 1,
+      active: 1,
+      closed: 0,
+      cancelled: 1,
+      paid: 1,
+    });
+    await as('owner', server().get('/api/admin/payments/stats')).expect(403);
+  });
+
   it('lists the action log newest first with the actor, filtered by event and action (SCR-28)', async () => {
     const event = await createEvent();
     const { attempt } = await paidAtMoyasar(event.id);

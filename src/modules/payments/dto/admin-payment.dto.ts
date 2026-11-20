@@ -74,3 +74,30 @@ export class RefundReasonDto {
   @Length(3, 300)
   reason!: string;
 }
+
+/** One month of net revenue (Asia/Riyadh calendar). */
+export interface MonthlyRevenue {
+  /** `YYYY-MM`. */
+  month: string;
+  /** Halalas paid that month and not refunded. */
+  revenue: number;
+  paidCount: number;
+}
+
+/** Figures for the top of SCR-26. Amounts are halalas, months follow Asia/Riyadh. */
+export interface AdminPaymentStatsView {
+  thisMonth: MonthlyRevenue & { refunded: number; newEvents: number };
+  lastMonth: MonthlyRevenue;
+  totalRevenue: number;
+  totalRefunded: number;
+  /** The last six months, oldest first, the current month included. */
+  monthly: MonthlyRevenue[];
+  events: {
+    total: number;
+    draft: number;
+    active: number;
+    closed: number;
+    cancelled: number;
+    paid: number;
+  };
+}

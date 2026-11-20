@@ -96,4 +96,20 @@ export class AdminEventsController {
     );
     return withMessage(toAdminEventView(event, stage), 'events.refunded');
   }
+
+  @Post('events/:id/cancel')
+  @HttpCode(200)
+  @UseGuards(CsrfGuard)
+  @ApiOperation({
+    summary:
+      'Cancels an open event without a refund: stops the campaign and revokes QR codes.',
+  })
+  async cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RefundReasonDto,
+  ) {
+    const [event, stage] = await this.events.cancel(user.id, id, dto.reason);
+    return withMessage(toAdminEventView(event, stage), 'events.cancelled');
+  }
 }

@@ -156,6 +156,8 @@ export const MESSAGES = {
   'payments.refund_done': 'سُجّل استرجاع المبلغ.',
   'events.not_paid': 'المناسبة غير مدفوعة، فلا يوجد ما يُسترجع.',
   'events.refunded': 'سُجّل الاسترجاع وأُلغيت المناسبة.',
+  'events.cancelled': 'أُلغيت المناسبة.',
+  'events.not_cancellable': 'المناسبة ملغاة أو منتهية مسبقاً.',
   'users.self': 'لا يمكنك تعليق حسابك أو إعادة تفعيله بنفسك.',
   'users.invited': 'هذا مدير مدعو لم يفعّل حسابه بعد؛ يُدار من الخادم.',
   'users.already_suspended': 'الحساب معلّق مسبقاً.',

@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, LessThan, Repository } from 'typeorm';
+import {
+  Brackets,
+  DataSource,
+  EntityManager,
+  LessThan,
+  Repository,
+} from 'typeorm';
 import {
   conflict,
   notFound,
@@ -209,6 +215,7 @@ export class AdminEventsService {
   /**
    * AC-05-5: the money was returned by hand in the Moyasar dashboard. The event is cancelled with
    * its campaign, queued messages are cancelled and every QR code is revoked (OQ-16 default).
+   * An event the admin already cancelled can still be refunded here.
    */
   async markRefunded(
     actorUserId: string,
@@ -224,28 +231,8 @@ export class AdminEventsService {
       if (event.paymentStatus !== EventPaymentStatus.PAID)
         throw conflict('events.not_paid');
 
-      const previousCampaign = event.campaignStatus;
       event.paymentStatus = EventPaymentStatus.REFUNDED;
-      event.status = EventStatus.CANCELLED;
-      // A finished campaign keeps its history; anything else stops here.
-      if (event.campaignStatus !== EventCampaignStatus.SENT)
-        event.campaignStatus = EventCampaignStatus.CANCELLED;
-      await manager.save(event);
-
-      const messages = await manager.update(
-        WhatsappMessage,
-        { eventId: id, state: WhatsappMessageState.QUEUED },
-        {
-          state: WhatsappMessageState.CANCELLED,
-          lastErrorCode: 'event_refunded',
-        },
-      );
-      const qr = await manager
-        .createQueryBuilder()
-        .update(Guest)
-        .set({ qrTokenHash: null })
-        .where('event_id = :id AND qr_token_hash IS NOT NULL', { id })
-        .execute();
+      const shutdown = await this.shutDown(manager, event, 'event_refunded');
       const paid = await manager.findOne(PaymentAttempt, {
         where: { eventId: id, status: PaymentAttemptStatus.PAID },
         lock: { mode: 'pessimistic_write' },
@@ -270,13 +257,78 @@ export class AdminEventsService {
         summary: {
           reason,
           paymentAttemptId: paid?.id,
-          previousCampaign,
-          messagesCancelled: messages.affected ?? 0,
-          qrRevoked: qr.affected ?? 0,
+          ...shutdown,
         },
       });
     });
     return this.get(id);
+  }
+
+  /**
+   * Cancels an open event without touching its money: the campaign stops, queued messages are
+   * cancelled and every QR code is revoked. A paid event can still be refunded afterwards
+   * through `markRefunded`.
+   */
+  async cancel(
+    actorUserId: string,
+    id: string,
+    reason: string,
+  ): Promise<readonly [Event, EventStage]> {
+    await this.dataSource.transaction(async (manager) => {
+      const event = await manager.findOne(Event, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!event) throw notFound();
+      if (
+        event.status === EventStatus.CANCELLED ||
+        event.status === EventStatus.CLOSED
+      )
+        throw conflict('events.not_cancellable');
+      const previousStatus = event.status;
+      const shutdown = await this.shutDown(manager, event, 'event_cancelled');
+      await manager.insert(AdminAction, {
+        actorUserId,
+        action: 'event.cancelled',
+        targetType: 'event',
+        targetId: id,
+        summary: {
+          reason,
+          previousStatus,
+          paymentStatus: event.paymentStatus,
+          ...shutdown,
+        },
+      });
+    });
+    return this.get(id);
+  }
+
+  /** Cancels the event and its campaign, its queued messages and its QR codes; saves the event. */
+  private async shutDown(manager: EntityManager, event: Event, code: string) {
+    const previousCampaign = event.campaignStatus;
+    event.status = EventStatus.CANCELLED;
+    event.cancelledAt ??= new Date();
+    // A finished campaign keeps its history; anything else stops here.
+    if (event.campaignStatus !== EventCampaignStatus.SENT)
+      event.campaignStatus = EventCampaignStatus.CANCELLED;
+    await manager.save(event);
+
+    const messages = await manager.update(
+      WhatsappMessage,
+      { eventId: event.id, state: WhatsappMessageState.QUEUED },
+      { state: WhatsappMessageState.CANCELLED, lastErrorCode: code },
+    );
+    const qr = await manager
+      .createQueryBuilder()
+      .update(Guest)
+      .set({ qrTokenHash: null })
+      .where('event_id = :id AND qr_token_hash IS NOT NULL', { id: event.id })
+      .execute();
+    return {
+      previousCampaign,
+      messagesCancelled: messages.affected ?? 0,
+      qrRevoked: qr.affected ?? 0,
+    };
   }
 
   /** Only the owner columns the views need: the password hash stays out of memory. */
