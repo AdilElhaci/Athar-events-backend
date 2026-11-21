@@ -191,6 +191,10 @@ export const MESSAGES = {
   'whatsapp.unreachable': 'تعذّر الوصول إلى Meta الآن، حاول بعد قليل.',
   'whatsapp.template_created': 'أُرسل القالب إلى Meta للمراجعة.',
   'whatsapp.template_deleted': 'تم حذف القالب من Meta.',
+  'whatsapp.app_id_missing':
+    'إنشاء قالب بصورة يحتاج رقم تطبيق Meta (WHATSAPP_APP_ID) في إعدادات الخادم.',
+  'whatsapp.template_sample_failed':
+    'رفض Meta رفع الصورة النموذجية للقالب. تحقق من صلاحيات التوكن على التطبيق.',
   'whatsapp.template_reserved':
     'هذا قالب الدعوة المستخدم في الإرسال، ولا يُنشأ أو يُحذف من لوحة التحكم.',
   'whatsapp.template_variables_invalid':

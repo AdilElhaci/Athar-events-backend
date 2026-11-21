@@ -43,6 +43,11 @@ export class CreateWhatsappTemplateDto {
   @IsIn(TEMPLATE_CATEGORIES)
   category!: (typeof TEMPLATE_CATEGORIES)[number];
 
+  /** `IMAGE`: the header is the guest's QR card at send time; the sample is generated. */
+  @IsOptional()
+  @IsIn(['NONE', 'TEXT', 'IMAGE'])
+  headerFormat?: 'NONE' | 'TEXT' | 'IMAGE';
+
   @Transform(emptyToUndefined)
   @IsOptional()
   @IsString()

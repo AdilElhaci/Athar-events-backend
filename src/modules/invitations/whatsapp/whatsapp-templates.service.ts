@@ -10,6 +10,7 @@ import {
   unprocessable,
 } from '../../../shared/exceptions/app.exception';
 import { AdminAction } from '../../admin-actions/admin-action.entity';
+import { renderQrCardPng } from '../../checkin/qr-card';
 import { CreateWhatsappTemplateDto } from '../dto/whatsapp-template.dto';
 import {
   MessageTemplate,
@@ -119,12 +120,16 @@ export class WhatsappTemplatesService {
       throw badRequest('whatsapp.template_header_invalid');
     if (!bodyVariablesValid(dto.body, dto.bodyExamples))
       throw badRequest('whatsapp.template_variables_invalid');
+    const image = dto.headerFormat === 'IMAGE';
+    const headerImageHandle = image ? await this.sampleHandle() : undefined;
 
     const result = await this.client.createTemplate({
       name: dto.name,
       language: dto.language,
       category: dto.category,
-      headerText: dto.headerText,
+      headerText:
+        dto.headerFormat === 'NONE' || image ? undefined : dto.headerText,
+      headerImageHandle,
       body: dto.body,
       bodyExamples: dto.bodyExamples,
       footerText: dto.footerText,
@@ -135,8 +140,32 @@ export class WhatsappTemplatesService {
       name: dto.name,
       language: dto.language,
       category: dto.category,
+      header: image ? 'IMAGE' : dto.headerText ? 'TEXT' : 'NONE',
       metaId: result.ok ? result.id : null,
     });
+  }
+
+  /**
+   * Meta reviews an image template with a sample image. The sample is a QR card like the guests
+   * get (SP-07), with made-up details, so the admin uploads nothing.
+   */
+  private async sampleHandle(): Promise<string> {
+    const png = renderQrCardPng({
+      url: 'https://atharevents.sa/i/sample',
+      eventName: 'حفل زواج محمد وسارة',
+      guestName: 'ضيف كريم',
+      startsAt: new Date('2026-12-31T17:00:00Z'),
+      timezone: 'Asia/Riyadh',
+      venueName: 'قاعة الضيافة',
+    });
+    const upload = await this.client.uploadTemplateSample(png);
+    if (upload.ok) return upload.handle;
+    this.logger.warn(`Template sample upload failed: ${upload.code}`);
+    if (upload.reason === 'not_configured')
+      throw serviceUnavailable('whatsapp.app_id_missing');
+    if (upload.reason === 'network')
+      throw serviceUnavailable('whatsapp.unreachable');
+    throw unprocessable('whatsapp.template_sample_failed');
   }
 
   async remove(actorUserId: string, id: string, name: string): Promise<void> {

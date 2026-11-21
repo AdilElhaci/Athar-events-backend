@@ -196,6 +196,15 @@ export class EnvironmentVariables {
   WHATSAPP_INVITATION_TEMPLATE = 'athar_invitation';
 
   /**
+   * The Meta app id (App settings > Basic). Needed only to create templates with an image header
+   * from the dashboard: Meta takes the sample image through the app's resumable upload.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{5,20}$/)
+  WHATSAPP_APP_ID?: string;
+
+  /**
    * The template's state at Meta, set by hand until the template-status webhook exists (T-P1-10).
    * Scheduling is refused unless it is APPROVED (SP-04, integrations.md).
    */
