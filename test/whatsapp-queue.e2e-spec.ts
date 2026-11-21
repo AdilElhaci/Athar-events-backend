@@ -85,6 +85,7 @@ describe('WhatsApp queue triggers (e2e, T-P3-05)', () => {
     const run = jest.spyOn(sweeper, 'run').mockResolvedValue({
       stale: 0,
       started: 0,
+      journey: 0,
       sent: 50,
       completed: 0,
       media: 0,

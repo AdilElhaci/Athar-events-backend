@@ -431,7 +431,7 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
       expect(image.type).toBe('image');
       if (image.type !== 'image') return;
       expect(image.to).toBe(PHONE);
-      const token = /\/i\/([\w-]{43})$/.exec(image.caption)?.[1];
+      const token = /\/i\/([\w-]{43})\s/.exec(image.caption)?.[1];
       expect(token).toBeDefined();
       expect(hashQrToken(token!)).toBe(after.qrTokenHash);
 
@@ -547,15 +547,41 @@ describe('WhatsApp tracer: send, webhook, RSVP, QR (e2e)', () => {
       expect((await reloadGuest(guest.id)).rsvp).toBe(GuestRsvp.PENDING);
     });
 
-    it('a locked RSVP (decline that funded a replacement) does not change', async () => {
+    it('a replaced guest declining again changes nothing', async () => {
       const { guest, wamid } = await invited();
       await db.getRepository(Guest).update(guest.id, {
         rsvp: GuestRsvp.DECLINED,
         rsvpLocked: true,
       });
-      const id = await replyHook(wamid, 'RSVP_ACCEPT');
+      const id = await replyHook(wamid, 'RSVP_DECLINE');
       expect((await inbound(id)).outcome).toBe(WhatsappInboundOutcome.LOCKED);
       expect((await reloadGuest(guest.id)).rsvp).toBe(GuestRsvp.DECLINED);
+    });
+
+    it('D-53: a replaced guest who accepts uses a vacant invitation, else waits for an admin', async () => {
+      const { guest, wamid } = await invited();
+      await db.getRepository(Guest).update(guest.id, {
+        rsvp: GuestRsvp.DECLINED,
+        rsvpLocked: true,
+      });
+      // No vacant invitation: an admin decides.
+      await db.getRepository(Event).update(guest.eventId, { extraMargin: 0 });
+      const review = await replyHook(wamid, 'RSVP_ACCEPT');
+      expect((await inbound(review)).outcome).toBe(
+        WhatsappInboundOutcome.REVIEW,
+      );
+      expect((await reloadGuest(guest.id)).rsvp).toBe(GuestRsvp.DECLINED);
+
+      // One vacant: applied, and it is used.
+      await db.getRepository(Event).update(guest.eventId, { extraMargin: 1 });
+      const applied = await replyHook(wamid, 'RSVP_ACCEPT');
+      expect((await inbound(applied)).outcome).toBe(
+        WhatsappInboundOutcome.APPLIED,
+      );
+      const after = await reloadGuest(guest.id);
+      expect(after.rsvp).toBe(GuestRsvp.ACCEPTED);
+      expect(after.rsvpLocked).toBe(false);
+      expect(after.reinstatedAt).not.toBeNull();
     });
   });
 

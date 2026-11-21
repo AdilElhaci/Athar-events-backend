@@ -114,6 +114,15 @@ export const MESSAGES = {
   'campaign.template_not_approved':
     'قالب الدعوة لم يعتمد من واتساب (Meta) بعد، فلا يمكن الجدولة.',
   'campaign.send_after_event': 'موعد الإرسال يجب أن يسبق موعد المناسبة.',
+  'campaign.contact_consent_missing':
+    'لم يُقرّ صاحب المناسبة بعد بأن أرقام الضيوف مصرّح بالتواصل معها.',
+  'campaign.rsvp_close_invalid':
+    'آخر موعد للرد يجب أن يكون بعد موعد الإرسال وقبل موعد المناسبة.',
+  'rsvp_review.decided': 'تم تسجيل القرار.',
+  'rsvp_review.not_found': 'لا يوجد رد بانتظار القرار.',
+  'rsvp_review.no_vacant':
+    'لا توجد دعوات شاغرة، فلا يمكن قبول ضيف أُرسل بديل عنه.',
+  'rsvp_review.event_started': 'بدأت المناسبة، فلا يمكن قبول الرد.',
   'campaign.already_started': 'بدأ الإرسال أو انتهى، فلا يمكن تغيير الجدولة.',
   'campaign.not_scheduled': 'المناسبة غير مجدولة.',
   'campaign.paused': 'أُوقف الإرسال مؤقتاً.',

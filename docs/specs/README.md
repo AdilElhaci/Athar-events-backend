@@ -14,3 +14,4 @@ Acceptance criteria IDs (`AC-xx-n`) are defined in [scope and acceptance](../pro
 | [SP-04 WhatsApp campaigns, RSVP and replacements](SP-04-whatsapp-campaigns-rsvp-replacements.md) | FR-06, FR-04 (replacements), FR-03 (counts, approval), FR-08 (campaign parts) | P1 tracer, P3, P4 |
 | [SP-05 QR and check-in](SP-05-qr-and-check-in.md) | FR-07 | P1 tracer, P4 |
 | [SP-06 Landing page](SP-06-landing.md) | FR-01 | P1 |
+| [SP-07 Guest journeys](SP-07-guest-journeys.md) | Journeys, follow-ups, reminders, thank-you, RSVP close ([D-50](../product/decisions.md#d-50)) | P6 |

@@ -240,12 +240,14 @@ const extras = (
   ),
 });
 
-async function usedCount(
+/** Extra invitations used: replacements sent, and replaced guests reinstated by an accept (D-53). */
+export async function usedCount(
   manager: EntityManager,
   eventId: string,
 ): Promise<number> {
   const [row] = await manager.query<{ n: number }[]>(
-    `SELECT count(*)::int AS n FROM guests WHERE event_id = $1 AND replacement_for_guest_id IS NOT NULL`,
+    `SELECT count(*)::int AS n FROM guests
+      WHERE event_id = $1 AND (replacement_for_guest_id IS NOT NULL OR reinstated_at IS NOT NULL)`,
     [eventId],
   );
   return row.n;

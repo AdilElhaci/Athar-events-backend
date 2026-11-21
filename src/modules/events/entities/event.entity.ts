@@ -62,6 +62,11 @@ export enum EventCampaignStatus {
   '"requested_send_at" IS NULL OR "requested_send_at" < "starts_at"',
 )
 @Check('CHK_events_send_at', '"send_at" IS NULL OR "send_at" < "starts_at"')
+@Check('CHK_events_journey', '"journey" IS NULL OR "journey" IN (7, 21, 40)')
+@Check(
+  'CHK_events_rsvp_closes_at',
+  '"rsvp_closes_at" IS NULL OR "rsvp_closes_at" < "starts_at"',
+)
 export class Event {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -188,6 +193,21 @@ export class Event {
   /** Bumped on every schedule change; jobs carry it and do nothing on a mismatch. */
   @Column({ name: 'schedule_version', type: 'int', default: 0 })
   scheduleVersion!: number;
+
+  /** SP-07: 7, 21 or 40 days; null = invitation only (events scheduled before journeys). */
+  @Column({ type: 'smallint', nullable: true })
+  journey!: 7 | 21 | 40 | null;
+
+  /** SP-07: after this an accept waits for an admin (D-53); set when scheduling with a journey. */
+  @Column({ name: 'rsvp_closes_at', type: 'timestamptz', nullable: true })
+  rsvpClosesAt!: Date | null;
+
+  /** D-54: the owner declared the guests' numbers may be contacted (or an admin, with a reason). */
+  @Column({ name: 'contact_consent_at', type: 'timestamptz', nullable: true })
+  contactConsentAt!: Date | null;
+
+  @Column({ name: 'contact_consent_by_user_id', type: 'uuid', nullable: true })
+  contactConsentByUserId!: string | null;
 
   @Column({ name: 'admission_opens_at', type: 'timestamptz' })
   admissionOpensAt!: Date;

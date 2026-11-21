@@ -13,7 +13,32 @@ export enum WhatsappMessageKind {
   QR = 'QR',
   /** Approved QR template, used when the window has closed (not built yet). */
   QR_TEMPLATE = 'QR_TEMPLATE',
+  /** SP-07 guest journey (D-50): templates sent when due, re-checked after the claim. */
+  FOLLOW_UP_1 = 'FOLLOW_UP_1',
+  FOLLOW_UP_2 = 'FOLLOW_UP_2',
+  REMINDER_1 = 'REMINDER_1',
+  REMINDER_FINAL = 'REMINDER_FINAL',
+  THANK_YOU = 'THANK_YOU',
+  /** M03: free text inside the window opened by a decline; once per guest. */
+  APOLOGY = 'APOLOGY',
 }
+
+/** Journey kinds created by the sweeper when due (SP-07). */
+export const JOURNEY_KINDS = [
+  WhatsappMessageKind.FOLLOW_UP_1,
+  WhatsappMessageKind.FOLLOW_UP_2,
+  WhatsappMessageKind.REMINDER_1,
+  WhatsappMessageKind.REMINDER_FINAL,
+  WhatsappMessageKind.THANK_YOU,
+] as const;
+export type JourneyKind = (typeof JOURNEY_KINDS)[number];
+
+/** Messages a guest can answer with the RSVP buttons. */
+export const RSVP_KINDS = [
+  WhatsappMessageKind.INVITATION,
+  WhatsappMessageKind.FOLLOW_UP_1,
+  WhatsappMessageKind.FOLLOW_UP_2,
+];
 
 /** The send attempt's outcome. `UNKNOWN` is never resent automatically (AGENTS.md). */
 export enum WhatsappMessageState {
@@ -66,6 +91,10 @@ export class WhatsappMessage {
   scheduleVersion!: number;
 
   /** QR intents: the guest `qr_version` this message issues. */
+  /** SP-07: when a journey message fell due (null for other kinds). */
+  @Column({ name: 'scheduled_for', type: 'timestamptz', nullable: true })
+  scheduledFor!: Date | null;
+
   @Column({ name: 'qr_version', type: 'int', nullable: true })
   qrVersion!: number | null;
 

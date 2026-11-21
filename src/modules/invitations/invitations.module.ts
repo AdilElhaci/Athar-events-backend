@@ -17,6 +17,8 @@ import { WhatsappReply } from './entities/whatsapp-reply.entity';
 import { InvitationsService } from './invitations.service';
 import { MessagesService } from './messages.service';
 import { ReplacementsService } from './replacements.service';
+import { RsvpReviewsService } from './rsvp-reviews.service';
+import { AdminRsvpReviewsController } from './admin-rsvp-reviews.controller';
 import { InboxService } from './inbox.service';
 import { InboxMediaService } from './inbox-media.service';
 import { AdminInboxController } from './admin-inbox.controller';
@@ -24,6 +26,8 @@ import { OwnerInvitationController } from './owner-invitation.controller';
 import { AdminWhatsappTemplatesController } from './whatsapp/admin-whatsapp-templates.controller';
 import { HttpWhatsappClient, WhatsappClient } from './whatsapp/whatsapp.client';
 import { CampaignSenderService } from './whatsapp/campaign-sender.service';
+import { JourneyService } from './journey/journey.service';
+import { JourneyTemplatesService } from './journey/journey-templates.service';
 import { WhatsappSenderService } from './whatsapp/whatsapp-sender.service';
 import { WhatsappQueue } from './whatsapp/whatsapp-queue.service';
 import { WhatsappSweeperJob } from './whatsapp/whatsapp-sweeper.job';
@@ -51,6 +55,7 @@ import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
     EventsModule,
   ],
   controllers: [
+    AdminRsvpReviewsController,
     AdminInvitationsController,
     OwnerInvitationController,
     WhatsappWebhookController,
@@ -65,6 +70,8 @@ import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
     { provide: WhatsappClient, useClass: HttpWhatsappClient },
     WhatsappSenderService,
     CampaignSenderService,
+    JourneyService,
+    JourneyTemplatesService,
     WhatsappWebhookService,
     WhatsappSweeperJob,
     WhatsappQueue,
@@ -73,6 +80,7 @@ import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
     InboxService,
     InboxMediaService,
     ReplacementsService,
+    RsvpReviewsService,
     WhatsappDemoService,
     WhatsappBotService,
   ],

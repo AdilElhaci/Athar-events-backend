@@ -132,7 +132,7 @@ Quotation 09: deploy to hosting and connect the domain; configure email settings
 
 ## Out of scope
 
-From the quotation, section 3 (each can be priced later): offline QR scanning; automatic refunds (manual from the gateway dashboard); automatic ZATCA (Fatoora) integration; email invitations; reminder messages and SMS; multiple languages; advanced reports; fully custom design or an invitation-card designer; native Android/iOS apps.
+From the quotation, section 3 (each can be priced later): offline QR scanning; automatic refunds (manual from the gateway dashboard); automatic ZATCA (Fatoora) integration; email invitations; ~~reminder messages and~~ SMS (reminders moved into scope by [D-50](decisions.md#d-50)); multiple languages; advanced reports; fully custom design or an invitation-card designer; native Android/iOS apps.
 
 Also not built in the MVP (planning decisions, see [decisions](decisions.md)): owner upload of guest lists (quotation 03; channel in [OQ-04](open-questions.md)); companions / plus-ones ([OQ-03](open-questions.md)); delegated door-staff accounts ([D-08](decisions.md)); multiple campaigns or invitation variants per event; real-time sockets.
 

@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { EnvironmentVariables } from '../../../config/env.validation';
 import { renderQrCardPng } from '../../checkin/qr-card';
-import { hashQrToken, newQrToken, qrUrl } from '../../checkin/qr-token';
+import { deriveQrToken, hashQrToken, qrUrl } from '../../checkin/qr-token';
 import {
   Event,
   EventCampaignStatus,
@@ -14,11 +14,24 @@ import {
 import { Guest, GuestRsvp } from '../../guests/entities/guest.entity';
 import { InvitationContent } from '../entities/invitation-content.entity';
 import {
+  JOURNEY_KINDS,
+  JourneyKind,
   WhatsappDeliveryStatus,
   WhatsappMessage,
   WhatsappMessageKind,
   WhatsappMessageState,
 } from '../entities/whatsapp-message.entity';
+import { journeySkipReason } from '../journey/journey-eligibility';
+import {
+  APOLOGY_TEXT,
+  arabicDate,
+  arabicDateTime,
+  arabicTime,
+  confirmationCaption,
+  todayOrTomorrow,
+  venueLine,
+} from '../journey/journey-messages';
+import { JourneyTemplatesService } from '../journey/journey-templates.service';
 import { SendOutcome, WhatsappClient } from './whatsapp.client';
 
 export const RSVP_ACCEPT = 'RSVP_ACCEPT';
@@ -47,6 +60,23 @@ export const isInvitationKeyFor = (
 };
 export const qrKey = (guestId: string, qrVersion: number) =>
   `qr:${guestId}:${qrVersion}`;
+/** M02 by template after the window (an admin accepted a late reply, SP-07). */
+export const qrTemplateKey = (guestId: string, qrVersion: number) =>
+  `qr_template:${guestId}:${qrVersion}`;
+/** M03: once per guest, ever (SP-07 rule 3). */
+export const apologyKey = (guestId: string) => `apology:${guestId}`;
+
+/**
+ * Business-initiated templates: they go through the template lane, wait while the campaign is
+ * paused (except the thank-you) and count towards the rolling daily limit (SP-07 rule 7).
+ */
+export const TEMPLATE_KINDS: WhatsappMessageKind[] = [
+  WhatsappMessageKind.INVITATION,
+  WhatsappMessageKind.QR_TEMPLATE,
+  ...JOURNEY_KINDS,
+];
+const isJourneyKind = (kind: WhatsappMessageKind): kind is JourneyKind =>
+  (JOURNEY_KINDS as readonly WhatsappMessageKind[]).includes(kind);
 
 /**
  * Sends one intent at a time. Claims are conditional updates (`QUEUED` → `SENDING`), so two workers
@@ -57,6 +87,7 @@ export const qrKey = (guestId: string, qrVersion: number) =>
 export class WhatsappSenderService {
   private readonly logger = new Logger(WhatsappSenderService.name);
   private readonly appOrigin: string;
+  private readonly qrSecret: string;
   private readonly dailyLimit: number;
   private limitWarnedAt = 0;
 
@@ -68,9 +99,11 @@ export class WhatsappSenderService {
     @InjectRepository(InvitationContent)
     private readonly contents: Repository<InvitationContent>,
     private readonly client: WhatsappClient,
+    private readonly templates: JourneyTemplatesService,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.appOrigin = config.get('APP_ORIGIN', { infer: true });
+    this.qrSecret = config.get('QR_TOKEN_SECRET', { infer: true });
     this.dailyLimit = config.get('WHATSAPP_DAILY_INVITATION_LIMIT', {
       infer: true,
     });
@@ -186,10 +219,10 @@ export class WhatsappSenderService {
     if (!this.dailyLimit) return Infinity;
     const [row] = await this.messages.query<{ n: number }[]>(
       `SELECT count(*)::int AS n FROM whatsapp_messages
-        WHERE kind = $1
+        WHERE kind = ANY($1::whatsapp_message_kind[])
           AND (state = $2 OR (state IN ($3, $4) AND coalesce(sent_at, claimed_at) > now() - interval '24 hours'))`,
       [
-        WhatsappMessageKind.INVITATION,
+        TEMPLATE_KINDS,
         WhatsappMessageState.SENDING,
         WhatsappMessageState.SENT,
         WhatsappMessageState.UNKNOWN,
@@ -212,17 +245,19 @@ export class WhatsappSenderService {
     // QR images are sent inline by the webhook that created them: give that a moment first.
     // Invitations have no inline sender, so a queue trigger sends them at once (claims are
     // conditional either way, so a race only wastes a query).
+    // Templates (invitations, journey messages) are business-initiated: daily limit and pause.
     if (which === 'others')
-      query.andWhere('m.kind <> :invitation AND m.updated_at < :settled', {
-        invitation: WhatsappMessageKind.INVITATION,
-        settled,
-      });
+      query.andWhere(
+        'm.kind NOT IN (:...templates) AND m.updated_at < :settled',
+        { templates: TEMPLATE_KINDS, settled },
+      );
     else
       query
         .innerJoin(Event, 'e', 'e.id = m.event_id')
-        .andWhere('m.kind = :invitation AND e.campaign_status <> :paused', {
-          invitation: WhatsappMessageKind.INVITATION,
+        .andWhere('m.kind IN (:...templates)', { templates: TEMPLATE_KINDS })
+        .andWhere('(e.campaign_status <> :paused OR m.kind = :thanks)', {
           paused: EventCampaignStatus.PAUSED,
+          thanks: WhatsappMessageKind.THANK_YOU,
         });
     const rows = await query.getRawMany<{ id: string }>();
     return rows.map((row) => row.id);
@@ -244,7 +279,11 @@ export class WhatsappSenderService {
     if (!guest || guest.deletedAt || !guest.phone)
       return { outcome: 'CANCELLED', code: 'guest_gone' };
     const event = await this.events.findOneByOrFail({ id: message.eventId });
-    if (event.startsAt <= new Date())
+    // The thank-you is the one message sent after the start (D-50), to admitted guests only.
+    if (
+      event.startsAt <= new Date() &&
+      message.kind !== WhatsappMessageKind.THANK_YOU
+    )
       return { outcome: 'CANCELLED', code: 'event_started' };
     if (
       event.status === EventStatus.CANCELLED ||
@@ -256,6 +295,12 @@ export class WhatsappSenderService {
       return this.deliverInvitation(message, guest, event);
     if (message.kind === WhatsappMessageKind.QR)
       return this.deliverQr(message, guest, event);
+    if (message.kind === WhatsappMessageKind.QR_TEMPLATE)
+      return this.deliverQrTemplate(message, guest, event);
+    if (message.kind === WhatsappMessageKind.APOLOGY)
+      return this.deliverApology(message, guest);
+    if (isJourneyKind(message.kind))
+      return this.deliverJourney(message, message.kind, guest, event);
     return { outcome: 'CANCELLED', code: 'unsupported_kind' };
   }
 
@@ -291,9 +336,9 @@ export class WhatsappSenderService {
   }
 
   /**
-   * Issues the QR at send time so the token only ever exists in memory: the hash is written, the
-   * PNG uploaded and sent. A retry issues a fresh token for the same version (the earlier one was
-   * never delivered). A decline or a newer version in between cancels this intent.
+   * M02 inside the window opened by the accept. The token is derived from the guest and version
+   * (D-55), so reminders can carry the same QR; only its hash is written. A decline or a newer
+   * version in between cancels this intent.
    */
   private async deliverQr(
     message: WhatsappMessage,
@@ -302,8 +347,170 @@ export class WhatsappSenderService {
   ): Promise<Prepared> {
     if (Date.now() - message.createdAt.getTime() > WINDOW_MS)
       return { outcome: 'FAILED', code: 'window_closed' };
-    const version = message.qrVersion!;
-    const token = newQrToken();
+    const issued = await this.issueQr(guest, message.qrVersion!);
+    if (!issued) return { outcome: 'CANCELLED', code: 'superseded' };
+    const media = await this.uploadQrCard(issued.url, guest, event);
+    if (!media.ok) return media.outcome;
+    const content = await this.eventContent(event);
+    return this.client.sendImage(
+      guest.phone!,
+      media.mediaId,
+      confirmationCaption({
+        eventName: content?.variables.eventName ?? event.name,
+        date: arabicDate(event.startsAt, event.timezone),
+        time: arabicTime(event.startsAt, event.timezone),
+        venue: venueLine(event),
+        qrUrl: issued.url,
+      }),
+    );
+  }
+
+  /** M02 by template (`athar_confirmation`) when the window has closed. */
+  private async deliverQrTemplate(
+    message: WhatsappMessage,
+    guest: Guest,
+    event: Event,
+  ): Promise<Prepared> {
+    const issued = await this.issueQr(guest, message.qrVersion!);
+    if (!issued) return { outcome: 'CANCELLED', code: 'superseded' };
+    const media = await this.uploadQrCard(issued.url, guest, event);
+    if (!media.ok) return media.outcome;
+    const content = await this.eventContent(event);
+    return this.client.sendTemplate(guest.phone!, {
+      name: this.templates.nameFor(WhatsappMessageKind.QR_TEMPLATE),
+      language: this.templates.language,
+      headerImageMediaId: media.mediaId,
+      bodyParameters: [
+        content?.variables.eventName ?? event.name,
+        arabicDate(event.startsAt, event.timezone),
+        arabicTime(event.startsAt, event.timezone),
+        venueLine(event),
+      ],
+      quickReplyPayloads: [],
+    });
+  }
+
+  /** M03: free text inside the window opened by the decline; not if the guest accepted since. */
+  private async deliverApology(
+    message: WhatsappMessage,
+    guest: Guest,
+  ): Promise<Prepared> {
+    if (guest.rsvp !== GuestRsvp.DECLINED)
+      return { outcome: 'CANCELLED', code: 'not_declined' };
+    if (Date.now() - message.createdAt.getTime() > WINDOW_MS)
+      return { outcome: 'CANCELLED', code: 'window_closed' };
+    return this.client.sendText(guest.phone!, APOLOGY_TEXT);
+  }
+
+  /** SP-07: follow-ups, reminders, thank-you. Every rule is checked again after the claim. */
+  private async deliverJourney(
+    message: WhatsappMessage,
+    kind: JourneyKind,
+    guest: Guest,
+    event: Event,
+  ): Promise<Prepared> {
+    if (
+      event.campaignStatus === EventCampaignStatus.PAUSED &&
+      kind !== WhatsappMessageKind.THANK_YOU
+    )
+      return { outcome: 'HOLD' };
+    if (event.campaignStatus === EventCampaignStatus.CANCELLED)
+      return { outcome: 'CANCELLED', code: 'campaign_cancelled' };
+    if (message.scheduleVersion !== event.scheduleVersion)
+      return { outcome: 'CANCELLED', code: 'schedule_changed' };
+    const invitation =
+      kind === WhatsappMessageKind.FOLLOW_UP_1 ||
+      kind === WhatsappMessageKind.FOLLOW_UP_2
+        ? await this.messages
+            .createQueryBuilder('m')
+            .where('m.guestId = :guest AND m.kind = :invitation', {
+              guest: guest.id,
+              invitation: WhatsappMessageKind.INVITATION,
+            })
+            .andWhere('m.state = :sent AND m.deliveryStatus <> :failed', {
+              sent: WhatsappMessageState.SENT,
+              failed: WhatsappDeliveryStatus.FAILED,
+            })
+            .orderBy('m.sentAt', 'ASC')
+            .getOne()
+        : null;
+    const skip = journeySkipReason({
+      kind,
+      dueAt: message.scheduledFor ?? message.createdAt,
+      now: new Date(),
+      startsAt: event.startsAt,
+      rsvpClosesAt: event.rsvpClosesAt,
+      guest,
+      invitationSentAt: invitation?.sentAt ?? null,
+    });
+    if (skip) return { outcome: 'CANCELLED', code: skip };
+
+    const content = await this.eventContent(event);
+    const eventName = content?.variables.eventName ?? event.name;
+    const name = this.templates.nameFor(kind);
+    const language = this.templates.language;
+    const tz = event.timezone;
+    switch (kind) {
+      case WhatsappMessageKind.FOLLOW_UP_1:
+        return this.client.sendTemplate(guest.phone!, {
+          name,
+          language,
+          bodyParameters: [eventName, arabicDate(event.startsAt, tz)],
+          quickReplyPayloads: [RSVP_ACCEPT, RSVP_DECLINE],
+        });
+      case WhatsappMessageKind.FOLLOW_UP_2:
+        return this.client.sendTemplate(guest.phone!, {
+          name,
+          language,
+          bodyParameters: [
+            eventName,
+            arabicDateTime(event.rsvpClosesAt ?? event.startsAt, tz),
+          ],
+          quickReplyPayloads: [RSVP_ACCEPT, RSVP_DECLINE],
+        });
+      case WhatsappMessageKind.THANK_YOU:
+        return this.client.sendTemplate(guest.phone!, {
+          name,
+          language,
+          bodyParameters: [eventName],
+          quickReplyPayloads: [],
+        });
+      default: {
+        // Reminders carry the guest's current QR (D-55): the same token as the confirmation.
+        const current = await this.currentQr(guest);
+        if (!current) return { outcome: 'CANCELLED', code: 'not_accepted' };
+        const media = await this.uploadQrCard(current, guest, event);
+        if (!media.ok) return media.outcome;
+        const venue = venueLine(event);
+        const time = arabicTime(event.startsAt, tz);
+        return this.client.sendTemplate(guest.phone!, {
+          name,
+          language,
+          headerImageMediaId: media.mediaId,
+          bodyParameters:
+            kind === WhatsappMessageKind.REMINDER_1
+              ? [eventName, arabicDate(event.startsAt, tz), time, venue]
+              : [
+                  todayOrTomorrow(new Date(), event.startsAt, tz),
+                  eventName,
+                  time,
+                  venue,
+                ],
+          quickReplyPayloads: [],
+        });
+      }
+    }
+  }
+
+  /**
+   * Writes the hash of the version's derived token if the guest still accepts and no newer
+   * version was issued. Returns the QR URL, or null when superseded.
+   */
+  private async issueQr(
+    guest: Guest,
+    version: number,
+  ): Promise<{ url: string } | null> {
+    const token = deriveQrToken(this.qrSecret, guest.id, version);
     const issued = await this.guests
       .createQueryBuilder()
       .update()
@@ -318,9 +525,48 @@ export class WhatsappSenderService {
         { id: guest.id, accepted: GuestRsvp.ACCEPTED, version },
       )
       .execute();
-    if (!issued.affected) return { outcome: 'CANCELLED', code: 'superseded' };
+    return issued.affected ? { url: qrUrl(this.appOrigin, token) } : null;
+  }
 
-    const url = qrUrl(this.appOrigin, token);
+  /**
+   * The URL of the guest's valid QR. A token issued before D-55 cannot be derived again: the
+   * guest gets a new version (the old QR stops working, this message carries the new one).
+   */
+  private async currentQr(guest: Guest): Promise<string | null> {
+    if (!guest.qrTokenHash || guest.rsvp !== GuestRsvp.ACCEPTED) return null;
+    const token = deriveQrToken(this.qrSecret, guest.id, guest.qrVersion);
+    if (hashQrToken(token) === guest.qrTokenHash)
+      return qrUrl(this.appOrigin, token);
+    const next = guest.qrVersion + 1;
+    const nextToken = deriveQrToken(this.qrSecret, guest.id, next);
+    const reissued = await this.guests
+      .createQueryBuilder()
+      .update()
+      .set({
+        qrTokenHash: hashQrToken(nextToken),
+        qrVersion: next,
+        qrIssuedAt: () => 'now()',
+      })
+      .where(
+        'id = :id AND rsvp = :accepted AND qr_version = :version AND qr_token_hash = :hash',
+        {
+          id: guest.id,
+          accepted: GuestRsvp.ACCEPTED,
+          version: guest.qrVersion,
+          hash: guest.qrTokenHash,
+        },
+      )
+      .execute();
+    if (!reissued.affected) return null;
+    this.logger.log(`Guest ${guest.id}: QR reissued for a reminder (D-55)`);
+    return qrUrl(this.appOrigin, nextToken);
+  }
+
+  private async uploadQrCard(
+    url: string,
+    guest: Guest,
+    event: Event,
+  ): Promise<{ ok: true; mediaId: string } | { ok: false; outcome: Prepared }> {
     const upload = await this.client.uploadPng(
       renderQrCardPng({
         url,
@@ -331,10 +577,20 @@ export class WhatsappSenderService {
         venueName: event.venueName,
       }),
     );
-    if (!upload.ok)
-      return { outcome: upload.retry ? 'RETRY' : 'FAILED', code: upload.code };
-    const caption = `رمز دخولك إلى ${event.name}.\nيُرجى إبرازه عند الوصول.\n${url}`;
-    return this.client.sendImage(guest.phone!, upload.mediaId, caption);
+    if (upload.ok) return { ok: true, mediaId: upload.mediaId };
+    return {
+      ok: false,
+      outcome: {
+        outcome: upload.retry ? 'RETRY' : 'FAILED',
+        code: upload.code,
+      },
+    };
+  }
+
+  private eventContent(event: Event) {
+    return event.approvedContentId
+      ? this.contents.findOneBy({ id: event.approvedContentId })
+      : Promise.resolve(null);
   }
 
   private async record(message: WhatsappMessage, result: Prepared) {

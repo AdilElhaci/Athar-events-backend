@@ -1,6 +1,8 @@
 import { Transform } from 'class-transformer';
 import {
+  Equals,
   IsDateString,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -37,6 +39,10 @@ export class ApproveInvitationDto {
   @IsString()
   @Length(64, 64)
   contentHash!: string;
+
+  /** D-54: «أقر بأن أرقام الضيوف المرسلة مصرّح بالتواصل معها عبر واتساب». */
+  @Equals(true)
+  contactConsent!: true;
 }
 
 export class OverrideApprovalDto {
@@ -47,11 +53,25 @@ export class OverrideApprovalDto {
   @IsString()
   @Length(3, 300)
   reason!: string;
+
+  /** D-54: the owner made the contact declaration another way; the reason covers it. */
+  @Equals(true)
+  contactConsent!: true;
 }
 
 export class ScheduleDto {
   @IsDateString()
   sendAt!: string;
+
+  /** SP-07: 7, 21 or 40 days. Without it only the invitation is sent. */
+  @IsOptional()
+  @IsIn([7, 21, 40])
+  journey?: 7 | 21 | 40;
+
+  /** Defaults to 18:00 two days before the event date (D-51). */
+  @IsOptional()
+  @IsDateString()
+  rsvpClosesAt?: string;
 }
 
 export class UnscheduleDto {
@@ -104,6 +124,33 @@ export interface CampaignPreconditions {
   listReady: boolean;
   approved: boolean;
   templateApproved: boolean;
+  /** D-54. */
+  contactConsent: boolean;
+}
+
+export type JourneyStepName =
+  'FOLLOW_UP_1' | 'FOLLOW_UP_2' | 'REMINDER_1' | 'REMINDER_FINAL' | 'THANK_YOU';
+
+/** SP-07: the schedule's journey and what each step did so far. */
+export interface JourneyView {
+  journey: 7 | 21 | 40 | null;
+  sendAt: Date | null;
+  rsvpClosesAt: Date | null;
+  /** What scheduling would propose now, per journey; `fits` = its invitation day is still ahead. */
+  proposals: Array<{
+    journey: 7 | 21 | 40;
+    sendAt: Date;
+    rsvpClosesAt: Date;
+    fits: boolean;
+  }>;
+  steps: Array<{
+    step: JourneyStepName;
+    dueAt: Date;
+    /** Messages of this step by state (created when due). */
+    counts: { queued: number; sent: number; failed: number; skipped: number };
+  }>;
+  /** Late replies waiting for an admin (D-53). */
+  pendingReviews: number;
 }
 
 export interface AdminInvitationView {
@@ -117,10 +164,15 @@ export interface AdminInvitationView {
   versions: number;
   suggested: InvitationVariables;
   preconditions: CampaignPreconditions;
+  journey: JourneyView;
+  /** D-54: when and by whom (owner or admin) the contact declaration was made. */
+  contactConsent: { at: Date; by: 'OWNER' | 'ADMIN' } | null;
 }
 
 export interface OwnerInvitationView {
   content: InvitationContentView | null;
-  /** The owner can approve the latest version now. */
+  /** The owner can approve the latest version now (or make the missing declaration). */
   approvable: boolean;
+  /** D-54: when the contact declaration was made; null = still needed. */
+  contactConsentAt: Date | null;
 }

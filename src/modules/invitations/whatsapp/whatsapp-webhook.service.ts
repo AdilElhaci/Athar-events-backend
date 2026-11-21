@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import type { EnvironmentVariables } from '../../../config/env.validation';
 import { Event } from '../../events/entities/event.entity';
 import { Guest, GuestRsvp } from '../../guests/entities/guest.entity';
@@ -18,14 +18,17 @@ import {
   WhatsappInboundType,
 } from '../entities/whatsapp-inbound.entity';
 import {
+  RSVP_KINDS,
   WhatsappDeliveryStatus,
   WhatsappMessage,
   WhatsappMessageKind,
   WhatsappMessageState,
 } from '../entities/whatsapp-message.entity';
+import { usedCount } from '../replacements.service';
 import { BotInbound, WhatsappBotService } from './whatsapp-bot.service';
 import { DemoInbound, WhatsappDemoService } from './whatsapp-demo.service';
 import {
+  apologyKey,
   qrKey,
   RSVP_ACCEPT,
   RSVP_DECLINE,
@@ -512,47 +515,106 @@ export class WhatsappWebhookService {
     if (!reply.contextId || !reply.fromPhone)
       return { outcome: WhatsappInboundOutcome.UNMATCHED, ...none };
 
-    // The reply must answer one of our invitations, from the number it was sent to.
-    const invitation = await manager.findOneBy(WhatsappMessage, {
+    // The reply must answer one of our invitations or follow-ups, from the number it was sent to.
+    const answered = await manager.findOneBy(WhatsappMessage, {
       providerMessageId: reply.contextId,
-      kind: WhatsappMessageKind.INVITATION,
+      kind: In(RSVP_KINDS),
     });
-    if (!invitation)
+    if (!answered)
       return { outcome: WhatsappInboundOutcome.UNMATCHED, ...none };
+    // Event before guest, the order replacements use: D-53 counts vacant invitations under it.
+    const event = await manager.findOneOrFail(Event, {
+      where: { id: answered.eventId },
+      lock: { mode: 'pessimistic_write' },
+    });
     const guest = await manager
       .getRepository(Guest)
       .createQueryBuilder('g')
       .setLock('pessimistic_write')
-      .where('g.id = :id', { id: invitation.guestId })
+      .where('g.id = :id', { id: answered.guestId })
       .getOne();
     if (!guest || guest.deletedAt || guest.phone !== reply.fromPhone)
       return { outcome: WhatsappInboundOutcome.UNMATCHED, ...none };
 
     const matched = { guestId: guest.id, intentId: null };
-    const event = await manager.findOneByOrFail(Event, { id: guest.eventId });
     if (event.startsAt <= new Date())
       return { outcome: WhatsappInboundOutcome.AFTER_EVENT, ...matched };
-    if (guest.rsvpLocked)
-      return { outcome: WhatsappInboundOutcome.LOCKED, ...matched };
 
     if (reply.payload === RSVP_DECLINE) {
+      if (guest.rsvpLocked)
+        return { outcome: WhatsappInboundOutcome.LOCKED, ...matched };
       if (guest.rsvp !== GuestRsvp.DECLINED)
         await manager.update(Guest, guest.id, {
           rsvp: GuestRsvp.DECLINED,
           rsvpAt: new Date(),
           qrTokenHash: null, // a declined guest's QR no longer admits anyone
         });
+      // Nothing more for this guest: no QR, no reminder, no follow-up (SP-07).
       await manager.update(
         WhatsappMessage,
         {
           guestId: guest.id,
-          kind: WhatsappMessageKind.QR,
+          kind: In([
+            WhatsappMessageKind.QR,
+            WhatsappMessageKind.QR_TEMPLATE,
+            WhatsappMessageKind.FOLLOW_UP_1,
+            WhatsappMessageKind.FOLLOW_UP_2,
+            WhatsappMessageKind.REMINDER_1,
+            WhatsappMessageKind.REMINDER_FINAL,
+          ]),
           state: WhatsappMessageState.QUEUED,
         },
         { state: WhatsappMessageState.CANCELLED, lastErrorCode: 'declined' },
       );
-      return { outcome: WhatsappInboundOutcome.APPLIED, ...matched };
+      // M03 once per guest, ever; sent after the commit like the QR.
+      const apology = await manager
+        .createQueryBuilder()
+        .insert()
+        .into(WhatsappMessage)
+        .values({
+          eventId: guest.eventId,
+          guestId: guest.id,
+          kind: WhatsappMessageKind.APOLOGY,
+          logicalKey: apologyKey(guest.id),
+        })
+        .orIgnore()
+        .returning(['id'])
+        .execute();
+      const apologyId = (apology.raw as Array<{ id: string }>)[0]?.id ?? null;
+      return {
+        outcome: WhatsappInboundOutcome.APPLIED,
+        guestId: guest.id,
+        intentId: apologyId,
+      };
     }
+
+    // D-53: after the close, or a replaced guest with no vacant invitation, an admin decides.
+    if (guest.rsvp !== GuestRsvp.ACCEPTED) {
+      if (event.rsvpClosesAt && event.rsvpClosesAt <= new Date())
+        return { outcome: WhatsappInboundOutcome.REVIEW, ...matched };
+      if (guest.rsvpLocked) {
+        if (event.extraMargin - (await usedCount(manager, event.id)) <= 0)
+          return { outcome: WhatsappInboundOutcome.REVIEW, ...matched };
+        // Uses one vacant invitation; a later decline is applied again.
+        await manager.update(Guest, guest.id, {
+          rsvpLocked: false,
+          reinstatedAt: new Date(),
+        });
+      }
+    }
+    await manager.update(
+      WhatsappMessage,
+      {
+        guestId: guest.id,
+        kind: In([
+          WhatsappMessageKind.FOLLOW_UP_1,
+          WhatsappMessageKind.FOLLOW_UP_2,
+          WhatsappMessageKind.APOLOGY,
+        ]),
+        state: WhatsappMessageState.QUEUED,
+      },
+      { state: WhatsappMessageState.CANCELLED, lastErrorCode: 'accepted' },
+    );
 
     if (guest.rsvp !== GuestRsvp.ACCEPTED)
       await manager.update(Guest, guest.id, {
@@ -560,7 +622,10 @@ export class WhatsappWebhookService {
         rsvpAt: new Date(),
       });
     const latest = await manager.findOne(WhatsappMessage, {
-      where: { guestId: guest.id, kind: WhatsappMessageKind.QR },
+      where: {
+        guestId: guest.id,
+        kind: In([WhatsappMessageKind.QR, WhatsappMessageKind.QR_TEMPLATE]),
+      },
       order: { qrVersion: 'DESC' },
     });
     // A QR is on its way, or a valid one was sent (or may have been): nothing new.
