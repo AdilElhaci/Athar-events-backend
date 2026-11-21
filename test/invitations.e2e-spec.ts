@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { defaultRsvpClosesAt } from '../src/modules/invitations/journey/journey-schedule';
 import { WhatsappQueue } from '../src/modules/invitations/whatsapp/whatsapp-queue.service';
 import { configureApp } from '../src/app.setup';
 import { AdminAction } from '../src/modules/admin-actions/admin-action.entity';
@@ -75,7 +76,7 @@ describe('Invitation approval and scheduling (e2e)', () => {
   const approve = (eventId: string, body: object) =>
     csrf(
       asOwner(server().post(`/api/events/${eventId}/invitation/approve`)),
-    ).send(body);
+    ).send({ contactConsent: true, ...body });
   const schedule = (eventId: string, sendAt: Date) =>
     csrf(asAdmin(server().post(`/api/admin/events/${eventId}/schedule`))).send({
       sendAt: sendAt.toISOString(),
@@ -203,6 +204,7 @@ describe('Invitation approval and scheduling (e2e)', () => {
     expect((await ownerView(event.id)).body.data).toEqual({
       content: null,
       approvable: false,
+      contactConsentAt: null,
     });
   });
 
@@ -244,6 +246,16 @@ describe('Invitation approval and scheduling (e2e)', () => {
     }).expect(409);
     expect(outdated.body.code).toBe('invitation.version_outdated');
 
+    // D-54: the contact declaration is part of the approval.
+    await approve(event.id, {
+      contentId: view.content.id,
+      contentHash: view.content.contentHash,
+      contactConsent: false,
+    }).expect(400);
+    expect((await reload(event.id)).approvalStatus).toBe(
+      EventApprovalStatus.AWAITING_OWNER,
+    );
+
     const ok = await approve(event.id, {
       contentId: view.content.id,
       contentHash: view.content.contentHash,
@@ -252,6 +264,8 @@ describe('Invitation approval and scheduling (e2e)', () => {
       approvable: false,
       content: { approvedBy: 'OWNER' },
     });
+    expect(ok.body.data.contactConsentAt).not.toBeNull();
+    expect((await reload(event.id)).contactConsentByUserId).toBe(ownerId);
     await approve(event.id, {
       contentId: view.content.id,
       contentHash: view.content.contentHash,
@@ -306,7 +320,11 @@ describe('Invitation approval and scheduling (e2e)', () => {
         server().post(`/api/admin/events/${event.id}/invitation/override`),
       ),
     )
-      .send({ contentId, reason: 'وافق صاحب المناسبة هاتفياً' })
+      .send({
+        contentId,
+        reason: 'وافق صاحب المناسبة هاتفياً',
+        contactConsent: true,
+      })
       .expect(200)
       .expect((res) =>
         expect(res.body.data.content).toMatchObject({
@@ -322,7 +340,63 @@ describe('Invitation approval and scheduling (e2e)', () => {
       .findBy({ targetId: event.id, action: 'invitation.override' });
     expect(audits[0].summary).toMatchObject({
       reason: 'وافق صاحب المناسبة هاتفياً',
+      contactConsent: true,
     });
+    const after = await reload(event.id);
+    expect(after.contactConsentAt).not.toBeNull();
+    expect(after.contactConsentByUserId).not.toBe(after.ownerId);
+  });
+
+  it('schedules a guest journey with its RSVP close (SP-07, D-51)', async () => {
+    const event = await readyEvent();
+    const created = await createVersion(event.id, VARS).expect(200);
+    const content = created.body.data.content;
+    await approve(event.id, {
+      contentId: content.id,
+      contentHash: content.contentHash,
+    }).expect(200);
+    setTemplate('APPROVED');
+    const sendAt = new Date(Date.now() + 9 * DAY_MS); // the 21-day invitation day
+    const post = (body: object) =>
+      csrf(
+        asAdmin(server().post(`/api/admin/events/${event.id}/schedule`)),
+      ).send({ sendAt: sendAt.toISOString(), ...body });
+
+    await post({ journey: 14 }).expect(400);
+    expect(
+      (
+        await post({
+          journey: 21,
+          rsvpClosesAt: new Date(sendAt.getTime() - 60_000).toISOString(),
+        }).expect(422)
+      ).body.code,
+    ).toBe('campaign.rsvp_close_invalid');
+
+    await post({ journey: 21 }).expect(200);
+    const after = await reload(event.id);
+    expect(after.journey).toBe(21);
+    expect(after.rsvpClosesAt).toEqual(
+      defaultRsvpClosesAt(after.startsAt, after.timezone),
+    );
+    const view = await asAdmin(
+      server().get(`/api/admin/events/${event.id}/invitation`),
+    ).expect(200);
+    expect(view.body.data.preconditions.contactConsent).toBe(true);
+    expect(view.body.data.contactConsent).toMatchObject({ by: 'OWNER' });
+    expect(view.body.data.journey).toMatchObject({
+      journey: 21,
+      pendingReviews: 0,
+    });
+    expect(
+      view.body.data.journey.steps.map((s: { step: string }) => s.step),
+    ).toEqual([
+      'FOLLOW_UP_1',
+      'FOLLOW_UP_2',
+      'REMINDER_1',
+      'REMINDER_FINAL',
+      'THANK_YOU',
+    ]);
+    expect(view.body.data.journey.proposals).toHaveLength(3);
   });
 
   it('schedules only when every precondition holds, then freezes edits (SP-04)', async () => {
@@ -349,6 +423,19 @@ describe('Invitation approval and scheduling (e2e)', () => {
     );
 
     setTemplate('APPROVED');
+    // D-54: no declaration, no campaign (an event approved before the rule).
+    await db.getRepository(Event).update(event.id, {
+      contactConsentAt: null,
+      contactConsentByUserId: null,
+    });
+    expect((await schedule(event.id, sendAt).expect(422)).body.code).toBe(
+      'campaign.contact_consent_missing',
+    );
+    expect((await ownerView(event.id)).body.data.approvable).toBe(true);
+    await approve(event.id, {
+      contentId: content.id,
+      contentHash: content.contentHash,
+    }).expect(200);
     expect(
       (await schedule(event.id, new Date(Date.now() - 60_000)).expect(422)).body
         .code,

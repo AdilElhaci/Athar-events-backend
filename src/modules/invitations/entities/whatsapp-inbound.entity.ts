@@ -20,6 +20,13 @@ export enum WhatsappInboundOutcome {
   AFTER_EVENT = 'AFTER_EVENT',
   /** Not a button reply (free text, media): recorded, nothing changes. */
   IGNORED = 'IGNORED',
+  /** SP-07, D-53: an accept after the RSVP close or without a vacant invitation; an admin decides. */
+  REVIEW = 'REVIEW',
+}
+
+export enum RsvpReviewDecision {
+  ACCEPTED = 'ACCEPTED',
+  DISMISSED = 'DISMISSED',
 }
 
 /** D-47: the structured part of a non-text message, already bounded by the webhook. */
@@ -109,6 +116,21 @@ export class WhatsappInbound {
   outcome!: WhatsappInboundOutcome;
 
   /** When an admin opened the conversation in the inbox (D-45); null = unread. */
+  @Column({
+    name: 'review_decision',
+    type: 'enum',
+    enum: RsvpReviewDecision,
+    enumName: 'rsvp_review_decision',
+    nullable: true,
+  })
+  reviewDecision!: RsvpReviewDecision | null;
+
+  @Column({ name: 'review_decided_at', type: 'timestamptz', nullable: true })
+  reviewDecidedAt!: Date | null;
+
+  @Column({ name: 'review_decided_by_user_id', type: 'uuid', nullable: true })
+  reviewDecidedByUserId!: string | null;
+
   @Column({ name: 'seen_at', type: 'timestamptz', nullable: true })
   seenAt!: Date | null;
 

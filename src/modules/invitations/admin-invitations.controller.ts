@@ -87,7 +87,13 @@ export class AdminInvitationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ScheduleDto,
   ) {
-    await this.invitations.schedule(user.id, id, new Date(dto.sendAt));
+    await this.invitations.schedule(
+      user.id,
+      id,
+      new Date(dto.sendAt),
+      dto.journey ?? null,
+      dto.rsvpClosesAt ? new Date(dto.rsvpClosesAt) : null,
+    );
     const [event, stage] = await this.events.get(id);
     return withMessage(toAdminEventView(event, stage), 'campaign.scheduled');
   }

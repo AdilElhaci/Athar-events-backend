@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS } from '../../auth/services/rate-limit.service';
 import { InboxMediaService } from '../inbox-media.service';
+import { JourneyService } from '../journey/journey.service';
 import { CampaignSenderService } from './campaign-sender.service';
 import { WhatsappSenderService } from './whatsapp-sender.service';
 
@@ -15,6 +16,8 @@ const PASS_BUDGET_MS = 20_000;
 export interface SweepResult {
   stale: number;
   started: number;
+  /** SP-07 journey messages created because they fell due. */
+  journey: number;
   sent: number;
   completed: number;
   /** Inbound media downloads retried. */
@@ -37,6 +40,7 @@ export class WhatsappSweeperJob {
     private readonly sender: WhatsappSenderService,
     private readonly campaigns: CampaignSenderService,
     private readonly media: InboxMediaService,
+    private readonly journeys: JourneyService,
     @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
@@ -60,6 +64,7 @@ export class WhatsappSweeperJob {
     const stale = await this.sender.recoverStale();
     await this.campaigns.cancelStarted();
     const started = await this.campaigns.startDue();
+    const journey = await this.journeys.createDue();
     const deadline = Date.now() + PASS_BUDGET_MS;
     let sent = 0;
     let more = false;
@@ -75,6 +80,6 @@ export class WhatsappSweeperJob {
     const completed = await this.campaigns.completeFinished();
     // D-47: inbound media whose download after the webhook failed; a few per pass.
     const media = await this.media.retryPending(MEDIA_PER_PASS);
-    return { stale, started, sent, completed, media, more };
+    return { stale, started, journey, sent, completed, media, more };
   }
 }

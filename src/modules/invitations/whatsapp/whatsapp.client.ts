@@ -21,6 +21,8 @@ export interface TemplateMessage {
   bodyParameters: string[];
   /** Quick-reply payloads by button index. */
   quickReplyPayloads: string[];
+  /** Uploaded media id for a template with an IMAGE header (SP-07: the QR card). */
+  headerImageMediaId?: string;
 }
 
 /** A free-form message with reply buttons (service window only). Button ids come back in the webhook. */
@@ -399,6 +401,19 @@ export class HttpWhatsappClient extends WhatsappClient {
         name: template.name,
         language: { code: template.language },
         components: [
+          ...(template.headerImageMediaId
+            ? [
+                {
+                  type: 'header',
+                  parameters: [
+                    {
+                      type: 'image',
+                      image: { id: template.headerImageMediaId },
+                    },
+                  ],
+                },
+              ]
+            : []),
           // Meta rejects an empty parameter list: a template without variables sends none.
           ...(template.bodyParameters.length > 0
             ? [

@@ -107,6 +107,10 @@ export class Guest {
   @Column({ name: 'rsvp_locked', type: 'boolean', default: false })
   rsvpLocked!: boolean;
 
+  /** D-53: this replaced guest's accept used a vacant invitation (counts like a replacement). */
+  @Column({ name: 'reinstated_at', type: 'timestamptz', nullable: true })
+  reinstatedAt!: Date | null;
+
   /** SHA-256 of the current QR token; null when none is valid (not issued, or revoked). */
   @Column({
     name: 'qr_token_hash',

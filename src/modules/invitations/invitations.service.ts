@@ -29,6 +29,16 @@ import {
   InvitationContent,
   InvitationVariables,
 } from './entities/invitation-content.entity';
+import { JourneyStepName, JourneyView } from './dto/invitation.dto';
+import {
+  defaultRsvpClosesAt,
+  isJourney,
+  Journey,
+  JOURNEYS,
+  plannedSteps,
+  proposedSendAt,
+} from './journey/journey-schedule';
+import { WhatsappInboundOutcome } from './entities/whatsapp-inbound.entity';
 import {
   contentHash,
   INVITATION_BODY,
@@ -100,6 +110,78 @@ export class InvitationsService {
       versions,
       suggested: suggestVariables(event),
       preconditions: this.preconditions(event),
+      journey: await this.journeyView(event),
+      contactConsent: event.contactConsentAt
+        ? {
+            at: event.contactConsentAt,
+            by:
+              event.contactConsentByUserId === event.ownerId
+                ? 'OWNER'
+                : 'ADMIN',
+          }
+        : null,
+    };
+  }
+
+  /** SP-07 timeline: proposals per journey, and the scheduled steps with their messages. */
+  private async journeyView(event: Event): Promise<JourneyView> {
+    const now = Date.now();
+    const proposals = JOURNEYS.map((journey) => {
+      const sendAt = proposedSendAt(event.startsAt, event.timezone, journey);
+      return {
+        journey,
+        sendAt,
+        rsvpClosesAt: defaultRsvpClosesAt(event.startsAt, event.timezone),
+        fits: sendAt.getTime() > now,
+      };
+    });
+    const counts = await this.dataSource.query<
+      { kind: JourneyStepName; state: string; n: number }[]
+    >(
+      `SELECT kind, state, count(*)::int AS n FROM whatsapp_messages
+        WHERE event_id = $1 AND kind IN ('FOLLOW_UP_1', 'FOLLOW_UP_2', 'REMINDER_1', 'REMINDER_FINAL', 'THANK_YOU')
+        GROUP BY kind, state`,
+      [event.id],
+    );
+    const steps =
+      isJourney(event.journey) && event.sendAt
+        ? plannedSteps({
+            journey: event.journey,
+            startsAt: event.startsAt,
+            timeZone: event.timezone,
+            sendAt: event.sendAt,
+            rsvpClosesAt:
+              event.rsvpClosesAt ??
+              defaultRsvpClosesAt(event.startsAt, event.timezone),
+          }).map(({ step, dueAt }) => {
+            const of = (states: string[]) =>
+              counts
+                .filter((c) => c.kind === step && states.includes(c.state))
+                .reduce((sum, c) => sum + c.n, 0);
+            return {
+              step,
+              dueAt,
+              counts: {
+                queued: of(['QUEUED', 'SENDING']),
+                sent: of(['SENT', 'UNKNOWN']),
+                failed: of(['FAILED']),
+                skipped: of(['CANCELLED']),
+              },
+            };
+          })
+        : [];
+    const [reviews] = await this.dataSource.query<{ n: number }[]>(
+      `SELECT count(DISTINCT guest_id)::int AS n FROM whatsapp_inbound
+        WHERE event_id = $1 AND outcome = $2 AND review_decision IS NULL`,
+      [event.id, WhatsappInboundOutcome.REVIEW],
+    );
+    return {
+      journey: event.journey,
+      sendAt: event.sendAt,
+      rsvpClosesAt: event.rsvpClosesAt,
+      proposals,
+      steps,
+      pendingReviews: reviews.n,
     };
   }
 
@@ -116,8 +198,11 @@ export class InvitationsService {
         : null,
       approvable:
         !!latest &&
-        event.approvalStatus === EventApprovalStatus.AWAITING_OWNER &&
-        !isClosed(event),
+        !isClosed(event) &&
+        (event.approvalStatus === EventApprovalStatus.AWAITING_OWNER ||
+          (event.approvalStatus === EventApprovalStatus.APPROVED &&
+            !event.contactConsentAt)),
+      contactConsentAt: event.contactConsentAt,
     };
   }
 
@@ -185,6 +270,7 @@ export class InvitationsService {
       const event = await lockEvent(manager, eventId);
       if (event.ownerId !== ownerId) throw notFound();
       await this.approveLatest(manager, event, contentId, hash, ownerId, null);
+      await recordConsent(manager, event, ownerId);
     });
   }
 
@@ -206,18 +292,25 @@ export class InvitationsService {
         actorUserId,
         reason,
       );
+      const consent = await recordConsent(manager, event, actorUserId);
       await audit(manager, actorUserId, 'invitation.override', eventId, {
         contentId,
         reason,
+        contactConsent: consent,
       });
     });
   }
 
-  /** SP-04 preconditions, then `SCHEDULED` with a new schedule version. Rescheduling is allowed. */
+  /**
+   * SP-04 preconditions, then `SCHEDULED` with a new schedule version. Rescheduling is allowed.
+   * With a journey (SP-07) the RSVP close is set too: by default 18:00 two days before the event.
+   */
   async schedule(
     actorUserId: string,
     eventId: string,
     sendAt: Date,
+    journey: Journey | null = null,
+    rsvpClosesAtInput: Date | null = null,
   ): Promise<void> {
     const version = await this.dataSource.transaction(async (manager) => {
       const event = await lockEvent(manager, eventId);
@@ -230,10 +323,21 @@ export class InvitationsService {
       if (!checks.approved) throw unprocessable('campaign.not_approved');
       if (!checks.templateApproved)
         throw unprocessable('campaign.template_not_approved');
+      if (!checks.contactConsent)
+        throw unprocessable('campaign.contact_consent_missing');
       if (sendAt.getTime() <= Date.now())
         throw unprocessable('events.send_in_past');
       if (sendAt.getTime() >= event.startsAt.getTime())
         throw unprocessable('campaign.send_after_event');
+      const rsvpClosesAt =
+        rsvpClosesAtInput ??
+        (journey ? defaultRsvpClosesAt(event.startsAt, event.timezone) : null);
+      if (
+        rsvpClosesAt &&
+        (rsvpClosesAt.getTime() <= sendAt.getTime() ||
+          rsvpClosesAt.getTime() >= event.startsAt.getTime())
+      )
+        throw unprocessable('campaign.rsvp_close_invalid');
 
       await manager.update(
         Event,
@@ -241,11 +345,15 @@ export class InvitationsService {
         {
           campaignStatus: EventCampaignStatus.SCHEDULED,
           sendAt,
+          journey,
+          rsvpClosesAt,
           scheduleVersion: event.scheduleVersion + 1,
         },
       );
       await audit(manager, actorUserId, 'campaign.schedule', eventId, {
         sendAt: sendAt.toISOString(),
+        journey,
+        rsvpClosesAt: rsvpClosesAt?.toISOString() ?? null,
         previous: event.sendAt?.toISOString() ?? null,
         scheduleVersion: event.scheduleVersion + 1,
       });
@@ -338,6 +446,7 @@ export class InvitationsService {
         event.approvalStatus === EventApprovalStatus.APPROVED &&
         !!event.approvedContentId,
       templateApproved: this.templateStatus === 'APPROVED',
+      contactConsent: !!event.contactConsentAt,
     };
   }
 
@@ -384,6 +493,21 @@ export class InvitationsService {
       },
     );
   }
+}
+
+/** D-54: kept once; returns whether this call recorded it. */
+async function recordConsent(
+  manager: EntityManager,
+  event: Event,
+  userId: string,
+): Promise<boolean> {
+  if (event.contactConsentAt) return false;
+  await manager.update(
+    Event,
+    { id: event.id },
+    { contactConsentAt: new Date(), contactConsentByUserId: userId },
+  );
+  return true;
 }
 
 const isClosed = (event: Event) =>

@@ -80,6 +80,11 @@ export class EnvironmentVariables {
   @MinLength(32)
   OTP_SECRET!: string;
 
+  /** D-55: derives the guests' QR tokens so reminders can carry the same QR. Losing it breaks them. */
+  @IsString()
+  @MinLength(32)
+  QR_TOKEN_SECRET!: string;
+
   @IsString()
   JWT_ISSUER = 'athar-events';
 
@@ -208,6 +213,31 @@ export class EnvironmentVariables {
   @Min(0)
   WHATSAPP_DAILY_INVITATION_LIMIT = 1000;
 
+  /** SP-07 journey templates (Arabic, UTILITY); a step is skipped while its template is not APPROVED. */
+  @IsString()
+  WHATSAPP_TEMPLATE_FOLLOWUP = 'athar_followup';
+
+  @IsString()
+  WHATSAPP_TEMPLATE_FOLLOWUP_FINAL = 'athar_followup_final';
+
+  @IsString()
+  WHATSAPP_TEMPLATE_REMINDER = 'athar_reminder';
+
+  @IsString()
+  WHATSAPP_TEMPLATE_REMINDER_FINAL = 'athar_reminder_final';
+
+  @IsString()
+  WHATSAPP_TEMPLATE_THANKS = 'athar_thanks';
+
+  /** M02 with the QR after the 24 h window (an admin accepted a late reply). */
+  @IsString()
+  WHATSAPP_TEMPLATE_CONFIRMATION = 'athar_confirmation';
+
+  /** SP-07 rule 1: a journey step found later than this after its due time is never sent. */
+  @IsInt()
+  @Min(1)
+  JOURNEY_MISSED_GRACE_MINUTES = 120;
+
   /**
    * The WhatsApp number visitors write to for the public demo (/try-whatsapp), digits only
    * (e.g. 9665XXXXXXXX): the business number behind WHATSAPP_PHONE_NUMBER_ID. Empty turns the demo off.
@@ -268,9 +298,16 @@ export function validateEnv(
     if (!env.SMTP_HOST) throw new Error('SMTP_HOST is required in production');
     if (!env.COOKIE_SECURE)
       throw new Error('COOKIE_SECURE must be true in production');
-    const secrets = [env.JWT_SECRET, env.TOKEN_PEPPER, env.OTP_SECRET];
+    const secrets = [
+      env.JWT_SECRET,
+      env.TOKEN_PEPPER,
+      env.OTP_SECRET,
+      env.QR_TOKEN_SECRET,
+    ];
     if (new Set(secrets).size !== secrets.length)
-      throw new Error('JWT_SECRET, TOKEN_PEPPER and OTP_SECRET must differ');
+      throw new Error(
+        'JWT_SECRET, TOKEN_PEPPER, OTP_SECRET and QR_TOKEN_SECRET must differ',
+      );
   }
   return env;
 }

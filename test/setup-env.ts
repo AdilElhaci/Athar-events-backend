@@ -14,6 +14,7 @@ Object.assign(process.env, {
   JWT_SECRET: 'test-jwt-secret-0123456789abcdefghijklmnopqrstuv',
   TOKEN_PEPPER: 'test-token-pepper-0123456789abcdefghijklmnopqrs',
   OTP_SECRET: 'test-otp-secret-0123456789abcdefghijklmnopqrstuv',
+  QR_TOKEN_SECRET: 'test-qr-token-secret-0123456789abcdefghijklmn',
   COOKIE_SECURE: 'true',
   SMTP_HOST: '',
   MAIL_FROM: 'no-reply@example.com',

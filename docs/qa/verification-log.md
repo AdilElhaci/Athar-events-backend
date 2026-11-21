@@ -240,3 +240,11 @@ Not verified: a real scheduled campaign on production; Meta's tier limits at vol
 - **Backend:** typecheck, build, unit 60/60, `pnpm test:e2e` 215/215. New `test/whatsapp-bot.e2e-spec.ts` (15): general menu for a number that is no guest, recorded as a `BOT` reply without author, message marked read; one menu per minute for concurrent messages; a Meta retry answered once; media answered with the menu; about and packages links; guest menu, occasion details with the map link, no pass button before accepting; an accepted guest gets a new pass (new version, new token hash, sent); at most 2 passes per guest per day; after the start details but no pass until admission closes; after admission closes answered as anyone else; handoff confirms, leaves the message unread and silences the bot; silent after an admin reply; RSVP buttons not answered; silent during a public demo; an ambiguous send recorded as `UNKNOWN` and not repeated. ESLint and Prettier: clean.
 - **Frontend:** typecheck, lint, format, production build. Not browser-checked.
 - **Not verified against Meta** (no local credentials; Meta cannot reach localhost).
+
+## 2026-11-21 — Guest journeys, phase 1 (T-P6-03 to T-P6-10)
+
+- Scope: SP-07 AC-J-1 to AC-J-10, D-50 to D-55.
+- Environment: local, branch `feat/guest-journeys` in both repositories, uncommitted.
+- Method: backend unit 78/78 (new: journey timing across time zones and the 16:00 boundary, eligibility rules); e2e 234/234, of which `journeys.e2e-spec.ts` 11/11 (follow-ups once and never to a late guest, replies to follow-ups, grace period, RSVP close, reminders with the same derived QR and the 24 h rule, legacy QR reissue, apology once with queued reminders cancelled, decline-then-accept, late accepts reviewed by an admin, thank-you to admitted guests only, unapproved template waits) and a journey scheduling case in `invitations.e2e-spec.ts`; migration `AddGuestJourneys` run and reverted locally; typecheck, lint (two pre-existing errors in `articles.e2e-spec.ts`), format, build. Frontend typecheck, lint, build.
+- Result: partial — automated suites pass. **Not browser-checked; not checked against Meta** (the six journey templates are not submitted yet, T-P6-02).
+- Follow-ups: T-P6-02 (templates), T-P6-11 (browser and real Meta check on a test event), T-P6-12, T-P6-13.

@@ -37,15 +37,20 @@ export class CampaignSenderService {
 
   /**
    * AC-06-5: nothing goes out once the event has started, even after an outage. Queued intents of
-   * started events are cancelled; a campaign that never started is cancelled.
+   * started events are cancelled; a campaign that never started is cancelled. The thank-you is the
+   * one exception (D-50): it is only ever created after the start.
    */
   async cancelStarted(): Promise<{ intents: number; campaigns: number }> {
     const intents = await this.dataSource.query<[unknown[], number]>(
       `UPDATE whatsapp_messages m
           SET state = $1, last_error_code = 'event_started', updated_at = now()
          FROM events e
-        WHERE m.event_id = e.id AND m.state = $2 AND e.starts_at <= now()`,
-      [WhatsappMessageState.CANCELLED, WhatsappMessageState.QUEUED],
+        WHERE m.event_id = e.id AND m.state = $2 AND e.starts_at <= now() AND m.kind <> $3`,
+      [
+        WhatsappMessageState.CANCELLED,
+        WhatsappMessageState.QUEUED,
+        WhatsappMessageKind.THANK_YOU,
+      ],
     );
     const campaigns = await this.dataSource.query<[{ id: string }[], number]>(
       `UPDATE events
