@@ -37,6 +37,15 @@ export interface ButtonsMessage {
 export type UploadOutcome =
   { ok: true; mediaId: string } | { ok: false; retry: boolean; code: string };
 
+/** A template sample image uploaded through the app's resumable upload (header_handle). */
+export type SampleUploadOutcome =
+  | { ok: true; handle: string }
+  | {
+      ok: false;
+      reason: 'not_configured' | 'network' | 'rejected';
+      code: string;
+    };
+
 /**
  * D-47 inbound media. `too_large`: Meta reports (or sends) more than the cap, nothing is kept.
  * `retry`: worth another attempt later (network, 5xx, rate limit).
@@ -79,6 +88,8 @@ export interface NewTemplate {
   language: string;
   category: 'MARKETING' | 'UTILITY';
   headerText?: string;
+  /** An IMAGE header: the handle of the sample image from `uploadTemplateSample`. */
+  headerImageHandle?: string;
   /** Body text with {{1}}…{{n}}. */
   body: string;
   /** One sample value per body variable, in order (Meta requires them for review). */
@@ -125,6 +136,8 @@ export abstract class WhatsappClient {
     message: ButtonsMessage,
   ): Promise<SendOutcome>;
   abstract uploadPng(png: Buffer): Promise<UploadOutcome>;
+  /** Meta's resumable upload for a template's sample header image; needs `WHATSAPP_APP_ID`. */
+  abstract uploadTemplateSample(png: Buffer): Promise<SampleUploadOutcome>;
   /** Uploads any file Meta accepts for sending (D-47: JPEG, PNG, PDF). */
   abstract uploadMedia(
     data: Buffer,
@@ -209,9 +222,17 @@ const metaSubcode = (body: unknown): number | undefined => {
 
 /** The Graph API `components` array for a new template. */
 export const toTemplateComponents = (t: NewTemplate): unknown[] => [
-  ...(t.headerText
-    ? [{ type: 'HEADER', format: 'TEXT', text: t.headerText }]
-    : []),
+  ...(t.headerImageHandle
+    ? [
+        {
+          type: 'HEADER',
+          format: 'IMAGE',
+          example: { header_handle: [t.headerImageHandle] },
+        },
+      ]
+    : t.headerText
+      ? [{ type: 'HEADER', format: 'TEXT', text: t.headerText }]
+      : []),
   {
     type: 'BODY',
     text: t.body,
@@ -271,10 +292,12 @@ export class HttpWhatsappClient extends WhatsappClient {
   private readonly token: string;
   private readonly phoneNumberId: string;
   private readonly wabaId: string;
+  private readonly appId: string;
   private readonly baseUrl: string;
 
   constructor(config: ConfigService<EnvironmentVariables, true>) {
     super();
+    this.appId = config.get('WHATSAPP_APP_ID', { infer: true }) ?? '';
     this.token = config.get('WHATSAPP_ACCESS_TOKEN', { infer: true }) ?? '';
     this.phoneNumberId =
       config.get('WHATSAPP_PHONE_NUMBER_ID', { infer: true }) ?? '';
@@ -324,6 +347,71 @@ export class HttpWhatsappClient extends WhatsappClient {
         typeof body.paging?.next === 'string' ? body.paging.next : undefined;
     }
     return { ok: true, templates };
+  }
+
+  /**
+   * Two steps (Graph API resumable upload): open a session on the app, then send the bytes with
+   * `Authorization: OAuth <token>` and `file_offset: 0`. Meta answers `{ h: <handle> }`.
+   */
+  async uploadTemplateSample(png: Buffer): Promise<SampleUploadOutcome> {
+    if (!this.token || !this.appId)
+      return { ok: false, reason: 'not_configured', code: 'app_id_missing' };
+    const session = new URL(`${this.baseUrl}/${this.appId}/uploads`);
+    session.searchParams.set('file_name', 'athar-sample.png');
+    session.searchParams.set('file_length', String(png.length));
+    session.searchParams.set('file_type', 'image/png');
+    let uploadId: string;
+    try {
+      const response = await fetch(session, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        id?: unknown;
+      } | null;
+      if (!response.ok || typeof body?.id !== 'string')
+        return {
+          ok: false,
+          reason: 'rejected',
+          code: `meta_${errorCode(body) ?? response.status}`,
+        };
+      uploadId = body.id;
+    } catch (error) {
+      return {
+        ok: false,
+        reason: 'network',
+        code: networkCode(error) ?? 'network',
+      };
+    }
+    try {
+      const response = await fetch(`${this.baseUrl}/${uploadId}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `OAuth ${this.token}`,
+          file_offset: '0',
+          'Content-Type': 'application/octet-stream',
+        },
+        body: new Uint8Array(png),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        h?: unknown;
+      } | null;
+      if (!response.ok || typeof body?.h !== 'string')
+        return {
+          ok: false,
+          reason: 'rejected',
+          code: `meta_${errorCode(body) ?? response.status}`,
+        };
+      return { ok: true, handle: body.h };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: 'network',
+        code: networkCode(error) ?? 'network',
+      };
+    }
   }
 
   createTemplate(template: NewTemplate): Promise<TemplateWriteOutcome> {

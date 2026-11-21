@@ -1,6 +1,6 @@
 # Guest journey WhatsApp templates (T-P6-02)
 
-Drafts for Meta submission, from the client brief §05–06 ([SP-07](../specs/SP-07-guest-journeys.md)). Language `ar`, category **UTILITY**. Meta does not accept a variable at the very start or end of the body, so some lines are reworded slightly from the brief. The **image header** templates cannot be created from the dashboard yet (D-41 supports text headers only): create them in WhatsApp Manager with any sample image; the platform sends the guest's QR card as the header image.
+Drafts for Meta submission, from the client brief §05–06 ([SP-07](../specs/SP-07-guest-journeys.md)). Language `ar`, category **UTILITY**. Meta does not accept a variable at the very start or end of the body, so some lines are reworded slightly from the brief. All six are created from the dashboard «قوالب واتساب» ([D-56](decisions.md#d-56)): for the image ones choose the header «صورة رمز الدخول (QR)»; the sample image is generated, and at send time the header is the guest's own QR card. This needs `WHATSAPP_APP_ID` in the server env.
 
 M03 (apology) is not a template: it is free text sent inside the 24 h window opened by the guest's decline.
 

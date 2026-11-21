@@ -7,6 +7,7 @@ import {
   TemplateWriteOutcome,
   TemplatesOutcome,
   TemplateMessage,
+  SampleUploadOutcome,
   UploadOutcome,
   WhatsappClient,
 } from '../whatsapp.client';
@@ -112,6 +113,17 @@ export class FakeWhatsappClient extends WhatsappClient {
     return this.accept((id) => ({ type: 'buttons', to, message, id }));
   }
 
+  /** Sample images uploaded for template headers. */
+  samples: Buffer[] = [];
+
+  uploadTemplateSample(png: Buffer): Promise<SampleUploadOutcome> {
+    this.samples.push(png);
+    return Promise.resolve({
+      ok: true,
+      handle: `4::sample${this.samples.length}`,
+    });
+  }
+
   uploadPng(png: Buffer): Promise<UploadOutcome> {
     return this.uploadMedia(png);
   }
@@ -187,6 +199,7 @@ export class FakeWhatsappClient extends WhatsappClient {
     this.nextWriteFailure = null;
     this.sent = [];
     this.uploads = [];
+    this.samples = [];
     this.nextOutcome = null;
     this.nextUploadFailure = null;
     this.media.clear();
