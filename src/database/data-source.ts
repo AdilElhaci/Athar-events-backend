@@ -24,6 +24,7 @@ import { WhatsappMessage } from '../modules/invitations/entities/whatsapp-messag
 import { Package } from '../modules/packages/entities/package.entity';
 import { PaymentAttempt } from '../modules/payments/entities/payment-attempt.entity';
 import { WebhookReceipt } from '../modules/payments/entities/webhook-receipt.entity';
+import { PushSubscription } from '../modules/push/entities/push-subscription.entity';
 import { User } from '../modules/users/entities/user.entity';
 
 export const ENTITIES = [
@@ -49,6 +50,7 @@ export const ENTITIES = [
   WhatsappInbound,
   WhatsappReply,
   WhatsappMedia,
+  PushSubscription,
 ];
 
 /** Shared by the Nest app, the migration CLI and the admin CLI. `synchronize` is always off. */

@@ -285,6 +285,24 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsEmail()
   OPS_ALERT_EMAIL?: string;
+
+  /**
+   * Web Push (VAPID) keys for admin notifications of new inbox messages. Generate once with
+   * `pnpm exec web-push generate-vapid-keys`; changing them drops every device's subscription.
+   * Unset: push is off and the dashboard hides the switch.
+   */
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9_-]{80,100}$/)
+  WEB_PUSH_PUBLIC_KEY?: string;
+
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9_-]{40,50}$/)
+  WEB_PUSH_PRIVATE_KEY?: string;
+
+  /** Contact the push services may use (`mailto:` or https). Default: `APP_ORIGIN`. */
+  @IsOptional()
+  @Matches(/^(mailto:\S+@\S+|https:\/\/\S+)$/)
+  WEB_PUSH_SUBJECT?: string;
 }
 
 export function validateEnv(
@@ -303,6 +321,10 @@ export function validateEnv(
     env.MOYASAR_SECRET_KEY?.startsWith('sk_live_')
   )
     throw new Error('MOYASAR_SECRET_KEY must be a test key outside production');
+  if (!env.WEB_PUSH_PUBLIC_KEY !== !env.WEB_PUSH_PRIVATE_KEY)
+    throw new Error(
+      'WEB_PUSH_PUBLIC_KEY and WEB_PUSH_PRIVATE_KEY must be set together',
+    );
   if (env.NODE_ENV === NodeEnv.Production) {
     if (!env.SMTP_HOST) throw new Error('SMTP_HOST is required in production');
     if (!env.COOKIE_SECURE)

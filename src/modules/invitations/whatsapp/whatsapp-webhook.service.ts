@@ -11,6 +11,7 @@ import {
   WebhookReceipt,
 } from '../../payments/entities/webhook-receipt.entity';
 import { InboxMediaService, InboundMediaInfo } from '../inbox-media.service';
+import { InboxPushService } from '../inbox-push.service';
 import {
   InboundDetails,
   WhatsappInbound,
@@ -173,6 +174,7 @@ export class WhatsappWebhookService {
     private readonly demo: WhatsappDemoService,
     private readonly bot: WhatsappBotService,
     private readonly media: InboxMediaService,
+    private readonly inboxPush: InboxPushService,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.appSecret = config.get('WHATSAPP_APP_SECRET', { infer: true }) ?? null;
@@ -210,6 +212,7 @@ export class WhatsappWebhookService {
     const demos: DemoInbound[] = [];
     const bots: BotInbound[] = [];
     const downloads: string[] = [];
+    const pushes: string[] = [];
     if (str(obj(body)?.object) !== 'whatsapp_business_account') return summary;
 
     for (const entry of arr(obj(body)?.entry)) {
@@ -221,10 +224,10 @@ export class WhatsappWebhookService {
           summary.statuses++;
         }
         for (const message of arr(value?.messages)) {
-          const { intentId, demo, mediaId, bot } = await this.applyMessage(
-            obj(message),
-          );
+          const { intentId, demo, mediaId, bot, pushId } =
+            await this.applyMessage(obj(message));
           if (intentId) kicks.push(intentId);
+          if (pushId) pushes.push(pushId);
           if (mediaId) downloads.push(mediaId);
           if (demo) demos.push(demo);
           if (bot) bots.push(bot);
@@ -242,7 +245,12 @@ export class WhatsappWebhookService {
     // The public demo (/try-whatsapp) answers after commit too; it never throws.
     for (const inbound of demos) void this.demo.onInbound(inbound);
     // The auto-reply menu (D-49) too; off unless enabled, never throws, silent during a demo.
-    for (const inbound of bots) void this.bot.onInbound(inbound);
+    // Then the admins' devices learn of what is still unread (the bot may have answered it).
+    for (const inbound of bots)
+      void this.bot
+        .onInbound(inbound)
+        .then(() => this.inboxPush.onInbound(inbound.inboundId));
+    for (const id of pushes) void this.inboxPush.onInbound(id);
     // D-47: Meta's media links expire, so fetch the file now; the sweeper retries failures.
     for (const id of downloads) void this.media.download(id);
     return summary;
@@ -358,8 +366,16 @@ export class WhatsappWebhookService {
     demo: DemoInbound | null;
     mediaId: string | null;
     bot: BotInbound | null;
+    /** A message for the inbox the bot will not see: announce it to the admins now. */
+    pushId: string | null;
   }> {
-    const nothing = { intentId: null, demo: null, mediaId: null, bot: null };
+    const nothing = {
+      intentId: null,
+      demo: null,
+      mediaId: null,
+      bot: null,
+      pushId: null,
+    };
     const providerId = str(message?.id);
     if (!providerId || !ID_PATTERN.test(providerId)) return nothing;
     const fromDigits = str(message?.from);
@@ -462,7 +478,9 @@ export class WhatsappWebhookService {
               buttonId: str(buttonReply?.id),
             }
           : null;
-      return { intentId, demo, mediaId, bot };
+      // RSVP buttons never count as unread (D-45); the bot's messages are announced after it ran.
+      const pushId = type !== 'button' && fromPhone && !bot ? inboundId : null;
+      return { intentId, demo, mediaId, bot, pushId };
     });
   }
 
