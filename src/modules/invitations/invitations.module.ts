@@ -21,6 +21,8 @@ import { RsvpReviewsService } from './rsvp-reviews.service';
 import { AdminRsvpReviewsController } from './admin-rsvp-reviews.controller';
 import { InboxService } from './inbox.service';
 import { InboxMediaService } from './inbox-media.service';
+import { InboxPushService } from './inbox-push.service';
+import { PushModule } from '../push/push.module';
 import { AdminInboxController } from './admin-inbox.controller';
 import { OwnerInvitationController } from './owner-invitation.controller';
 import { AdminWhatsappTemplatesController } from './whatsapp/admin-whatsapp-templates.controller';
@@ -53,6 +55,7 @@ import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
     ]),
     AuthModule,
     EventsModule,
+    PushModule,
   ],
   controllers: [
     AdminRsvpReviewsController,
@@ -79,6 +82,7 @@ import { WhatsappDemoService } from './whatsapp/whatsapp-demo.service';
     MessagesService,
     InboxService,
     InboxMediaService,
+    InboxPushService,
     ReplacementsService,
     RsvpReviewsService,
     WhatsappDemoService,
